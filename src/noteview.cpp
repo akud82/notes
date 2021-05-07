@@ -72,8 +72,7 @@ void NoteView::rowsInserted(const QModelIndex &parent, int start, int end)
 }
 
 void NoteView::startDrag(Qt::DropActions supportedActions)
-{
-    qDebug() << "startdrag";
+{    
     QListView::startDrag(supportedActions);
 }
 
@@ -173,20 +172,17 @@ void NoteView::init()
 }
 
 void NoteView::dragEnterEvent(QDragEnterEvent* event)
-{
-    qDebug() << "dragEnterEvent";
+{    
     QAbstractItemView::dragEnterEvent(event);
 }
 
 void NoteView::dragLeaveEvent(QDragLeaveEvent *event)
-{
-    qDebug() << "dragLeaveEvent";
+{    
     QAbstractItemView::dragLeaveEvent(event);
 }
 
 void NoteView::dragMoveEvent(QDragMoveEvent *event)
-{
-    qDebug() << "dragMoveEvent";
+{ 
     QAbstractItemView::dragMoveEvent(event);
 };
 
@@ -218,11 +214,14 @@ void NoteView::mousePressEvent(QMouseEvent*e)
             QModelIndex srcIdx = proxy->mapToSource(index);
             NoteModel* model = (NoteModel*)proxy->sourceModel();
             NoteData* note = model->getNote(srcIdx);
-            if(!note->isTemp())
+
+            // don't drag temporary notes
+            if(!note->isTemp()) {
                 m_dragModelIndex = srcIdx;
+            }
             else m_dragModelIndex = QModelIndex();
         } else {
-            qDebug() << "invalid";
+            m_dragModelIndex = QModelIndex();
         }
     }
 

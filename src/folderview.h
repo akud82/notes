@@ -17,6 +17,8 @@ public:
     QList<QTreeWidgetItem*> items();
     QModelIndex selectedItemIndex() const;
 
+    void dropEvent(QDropEvent *event) override;
+
 private:
     QTreeWidgetItem* createItem(const FolderData* folder);    
 

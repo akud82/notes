@@ -20,7 +20,7 @@ FolderView::~FolderView()
 
 void FolderView::init()
 {
-    setSelectionMode( QAbstractItemView::SingleSelection );
+    setSelectionMode(QAbstractItemView::SingleSelection);
     setDropIndicatorShown(true);
     setAcceptDrops(true);
     setDragDropMode(DragDropMode::DropOnly);
@@ -55,6 +55,20 @@ QModelIndex FolderView::selectedItemIndex() const
     if(lst.length() > 0) return lst.at(0);
     return QModelIndex();
 }
+
+void FolderView::dropEvent(QDropEvent *event)
+{
+
+}
+
+void FolderView::dragEnterEvent(QDragEnterEvent *event)
+{};
+
+void FolderView::dragMoveEvent(QDragMoveEvent *event)
+{};
+
+void FolderView::dragLeaveEvent(QDragLeaveEvent *event)
+{};
 
 void FolderView::prepareMenu(const QPoint & pos)
 {
