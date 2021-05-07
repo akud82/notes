@@ -2,6 +2,7 @@
 #define DBMANAGER_H
 
 #include "folderdata.h"
+#include "foldermodel.h"
 #include "notedata.h"
 #include "tagdata.h"
 #include <QObject>
@@ -47,7 +48,7 @@ private:
     bool moveToFolder(FolderData* src, FolderData* trg, NoteData* note);
 
     // Notes
-    int  getLastNoteID();
+    int  getLastNoteID(bool isTrash);
     bool forceLastNoteIndexValue(const int indexValue);
     NoteData* mapNote(QSqlQuery& query);
 
@@ -55,6 +56,9 @@ private:
     bool isNoteExist(NoteData* note);
 
     QList<NoteData *> getAllNotes();
+    QList<NoteData *> getTrashNotes();
+    QList<NoteData *> getNotes(int folderId);
+
     bool addNote(NoteData* note);
     bool removeNote(NoteData* note);
     bool permanantlyRemoveAllNotes();
@@ -84,7 +88,7 @@ public slots:
     void onFolderForceLastRowIndexRequested(int index);
 
     // Notes
-    void onNotesListRequested();
+    void onNotesListRequested(FolderModel::FolderType type, int folderId);
     void onNoteCreateUpdateRequested(NoteData* note);
     void onNoteDeleteRequested(NoteData* note);
     void onNotesForceLastRowIndexRequested(int index);

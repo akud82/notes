@@ -19,16 +19,22 @@ public:
     void setCurrentRowActive(bool isActive);
 
 protected:
+    void dragEnterEvent(QDragEnterEvent* event) Q_DECL_OVERRIDE;
+    void dragMoveEvent(QDragMoveEvent *e) Q_DECL_OVERRIDE;
+    void dragLeaveEvent(QDragLeaveEvent *e) Q_DECL_OVERRIDE;
     void paintEvent(QPaintEvent *e) Q_DECL_OVERRIDE;
     void mouseMoveEvent(QMouseEvent* e) Q_DECL_OVERRIDE;
     void mousePressEvent(QMouseEvent* e) Q_DECL_OVERRIDE;
     void mouseReleaseEvent(QMouseEvent* e) Q_DECL_OVERRIDE;
     bool viewportEvent(QEvent* e) Q_DECL_OVERRIDE;
+    void startDrag(Qt::DropActions supportedActions) Q_DECL_OVERRIDE;
 
 private:
     bool m_isScrollBarHidden;
     bool m_animationEnabled;
     bool m_isMousePressed;
+    QPoint m_dragStartPosition;
+    QModelIndex m_dragModelIndex;
     int m_rowHeight;
 
     void setupSignalsSlots();

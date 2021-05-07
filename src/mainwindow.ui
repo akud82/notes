@@ -30,6 +30,10 @@
 background-color: rgb(255, 255, 255);
 }
 
+QTreeWiget::item:selected {
+background-color:rgb(86, 136, 196);
+}
+
 QMenu {
     background-color: white;
     font-size: 11px;
@@ -177,7 +181,7 @@ NoteData #dateLabel{
              <property name="sizeHint" stdset="0">
               <size>
                <width>20</width>
-               <height>25</height>
+               <height>35</height>
               </size>
              </property>
             </spacer>
@@ -196,7 +200,7 @@ NoteData #dateLabel{
                 <x>0</x>
                 <y>0</y>
                 <width>246</width>
-                <height>335</height>
+                <height>325</height>
                </rect>
               </property>
               <property name="sizePolicy">
@@ -1067,8 +1071,17 @@ NoteData #dateLabel{
                    <property name="editTriggers">
                     <set>QAbstractItemView::NoEditTriggers</set>
                    </property>
-                   <property name="showDropIndicator" stdset="0">
-                    <bool>false</bool>
+                   <property name="dragEnabled">
+                    <bool>true</bool>
+                   </property>
+                   <property name="dragDropOverwriteMode">
+                    <bool>true</bool>
+                   </property>
+                   <property name="dragDropMode">
+                    <enum>QAbstractItemView::DragDrop</enum>
+                   </property>
+                   <property name="defaultDropAction">
+                    <enum>Qt::MoveAction</enum>
                    </property>
                    <property name="selectionBehavior">
                     <enum>QAbstractItemView::SelectRows</enum>

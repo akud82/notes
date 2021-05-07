@@ -1,3 +1,4 @@
+#include "notemodel.h"
 #include "noteview.h"
 #include "notewidgetdelegate.h"
 #include <QDebug>
@@ -8,16 +9,17 @@
 #include <QSortFilterProxyModel>
 #include <QTimer>
 #include <QScrollBar>
+#include <QDrag>
+#include <QModelIndex>
 
 NoteView::NoteView(QWidget *parent)
-    : QListView( parent ),
+    : QListView(parent),
       m_isScrollBarHidden(true),
       m_animationEnabled(true),
       m_isMousePressed(false),
       m_rowHeight(38)
 {
     this->setAttribute(Qt::WA_MacShowFocusRect, 0);
-
     QTimer::singleShot(0, this, SLOT(init()));
 }
 
@@ -67,6 +69,12 @@ void NoteView::rowsInserted(const QModelIndex &parent, int start, int end)
         animateAddedRow(parent, start, end);
 
     QListView::rowsInserted(parent, start, end);
+}
+
+void NoteView::startDrag(Qt::DropActions supportedActions)
+{
+    qDebug() << "startdrag";
+    QListView::startDrag(supportedActions);
 }
 
 /**
@@ -152,6 +160,10 @@ void NoteView::rowsMoved(const QModelIndex &parent, int start, int end,
 
 void NoteView::init()
 {
+    setSelectionMode(QAbstractItemView::SingleSelection);
+    setDragEnabled(true);
+    setDragDropMode(DragDropMode::DragOnly);
+
     setMouseTracking(true);
     setUpdatesEnabled(true);
     viewport()->setAttribute(Qt::WA_Hover);
@@ -160,21 +172,67 @@ void NoteView::init()
     setupSignalsSlots();
 }
 
-void NoteView::mouseMoveEvent(QMouseEvent*e)
+void NoteView::dragEnterEvent(QDragEnterEvent* event)
 {
+    qDebug() << "dragEnterEvent";
+    QAbstractItemView::dragEnterEvent(event);
+}
+
+void NoteView::dragLeaveEvent(QDragLeaveEvent *event)
+{
+    qDebug() << "dragLeaveEvent";
+    QAbstractItemView::dragLeaveEvent(event);
+}
+
+void NoteView::dragMoveEvent(QDragMoveEvent *event)
+{
+    qDebug() << "dragMoveEvent";
+    QAbstractItemView::dragMoveEvent(event);
+};
+
+void NoteView::mouseMoveEvent(QMouseEvent*e)
+{    
     if(!m_isMousePressed)
-        QListView::mouseMoveEvent(e);
+        QListView::mouseMoveEvent(e);  
+    else {
+        if (e->buttons() & Qt::LeftButton)  {
+            if ((e->pos() - m_dragStartPosition).manhattanLength() >= QApplication::startDragDistance()) {
+                if(m_dragModelIndex.isValid())
+                    startDrag(Qt::MoveAction);
+            }
+        }
+    }
 }
 
 void NoteView::mousePressEvent(QMouseEvent*e)
 {
-    m_isMousePressed = true;
+    m_isMousePressed = true;        
+
+    if (e->button() == Qt::LeftButton) {
+        m_dragStartPosition = e->pos();
+        m_dragModelIndex = QModelIndex();
+        QModelIndex index = indexAt(e->pos());
+
+        if(index.isValid()) {
+            QSortFilterProxyModel* proxy = ((QSortFilterProxyModel*)model());
+            QModelIndex srcIdx = proxy->mapToSource(index);
+            NoteModel* model = (NoteModel*)proxy->sourceModel();
+            NoteData* note = model->getNote(srcIdx);
+            if(!note->isTemp())
+                m_dragModelIndex = srcIdx;
+            else m_dragModelIndex = QModelIndex();
+        } else {
+            qDebug() << "invalid";
+        }
+    }
+
     QListView::mousePressEvent(e);
 }
 
 void NoteView::mouseReleaseEvent(QMouseEvent*e)
 {
-    m_isMousePressed = false;
+    m_isMousePressed = false;    
+    m_dragModelIndex = QModelIndex();
     QListView::mouseReleaseEvent(e);
 }
 

@@ -123,10 +123,17 @@ void DBManager::createTables()
  * \brief DBManager::getLastRowID
  * \return
  */
-int DBManager::getLastNoteID()
+int DBManager::getLastNoteID(bool isTrash)
 {
+    QString qry;
+    if(isTrash) {
+        qry = "SELECT seq from SQLITE_SEQUENCE WHERE name='deleted_notes';";
+    } else {
+        qry = "SELECT seq from SQLITE_SEQUENCE WHERE name='active_notes';";
+    }
+
     QSqlQuery query;
-    query.exec("SELECT seq from SQLITE_SEQUENCE WHERE name='active_notes';");
+    query.exec(qry);
     query.next();
     return query.value(0).toInt();
 }
@@ -339,6 +346,39 @@ bool DBManager::isFolderExists(FolderData* folder)
     return query.value(0).toInt() == 1;
 };
 
+QList<NoteData *> DBManager::getTrashNotes()
+{
+    QList<NoteData *> noteList;
+    QSqlQuery query;
+    query.prepare("SELECT id, folder_id, creation_date, modification_date, deletion_date, content, full_title FROM deleted_notes");
+    bool status = query.exec();
+    if(status){
+        while(query.next()){
+            noteList.push_back(mapNote(query));
+        }
+    }
+
+    return noteList;
+}
+
+QList<NoteData *> DBManager::getNotes(int folderId)
+{
+    QList<NoteData *> noteList;
+
+    QSqlQuery query;
+    QString qstr = QString("SELECT id, folder_id, creation_date, modification_date, deletion_date, content, full_title FROM active_notes "
+                           "WHERE folder_id = %1")
+                             .arg(folderId);
+    query.prepare(qstr);
+    bool status = query.exec();
+    if(status){
+        while(query.next()){
+            noteList.push_back(mapNote(query));
+        }
+    }
+
+    return noteList;
+}
 
 /*!
  * \brief DBManager::getAllNotes
@@ -421,13 +461,15 @@ bool DBManager::addNote(NoteData* note)
             : note->lastModificationdateTime().toMSecsSinceEpoch();
 
     QString queryStr = QString("INSERT INTO active_notes "
-                               "(creation_date, modification_date, deletion_date, content, full_title, folderId) "
+                               "(creation_date, modification_date, deletion_date, content, full_title, folder_id) "
                                "VALUES (%1, %2, -1, '%3', '%4', %5);")
                                .arg(epochTimeDateCreated)
                                .arg(epochTimeDateLastModified)
                                .arg(content)
                                .arg(fullTitle)
                                .arg(folderId);
+
+    qDebug() << "insert" << queryStr;
 
     query.exec(queryStr);
     return (query.numRowsAffected() == 1);
@@ -742,15 +784,16 @@ void DBManager::onFolderForceLastRowIndexRequested(int index)
 /*!
  * \brief DBManager::onNotesListRequested
  */
-void DBManager::onNotesListRequested()
+void DBManager::onNotesListRequested(FolderModel::FolderType type, int folderId)
 {
-    qDebug() << "onNotesListRequested()";
+    qDebug() << "onNotesListRequested()" << folderId;
 
     int noteCounter;
     QList<NoteData *> noteList;
-
-    noteCounter = getLastNoteID();
-    noteList    = getAllNotes();
+    noteCounter = getLastNoteID(type == FolderModel::Trash);
+    if(type == FolderModel::AllNotes) noteList = getAllNotes();
+    else if(type == FolderModel::Trash) noteList = getTrashNotes();
+    else if(type == FolderModel::Folder) noteList = getNotes(folderId);
 
     emit notesReceived(noteList, noteCounter);
 }
@@ -772,7 +815,6 @@ void DBManager::onOpenDBManagerRequested(QString path, bool doCreate)
 void DBManager::onNoteCreateUpdateRequested(NoteData* note)
 {
     bool exists = isNoteExist(note);
-
     if(exists) updateNote(note);
     else addNote(note);
 }

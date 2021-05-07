@@ -31,6 +31,9 @@ public:
     QString content() const;
     void setContent(const QString &content);
 
+    bool isTemp() const;
+    void setTemp(bool isTemp);
+
     bool isModified() const;
     void setModified(bool isModified);
 
@@ -46,6 +49,7 @@ public:
 
 private:
     int m_id;
+    bool m_isTemp;
     int m_folderId;
     QList<QString> m_tags;
     QString m_fullTitle;

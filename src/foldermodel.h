@@ -18,10 +18,20 @@ public:
         FolderDeletionDateTime
     };
 
-    explicit FolderModel(QObject *parent = nullptr);
+    enum FolderType
+    {
+        None = 0x0300 + 1,
+        AllNotes,
+        Trash,
+        Folder
+    };
 
+    explicit FolderModel(QObject *parent = nullptr);
+    FolderType currentFolderType();
+    int currentFolderId();
     FolderData* currentFolder();
-    void setCurrentFolder(const QModelIndex& index);
+
+    void setCurrentFolder(const FolderType type, const QModelIndex& index);
 
     // Folder specific functionality:
     QModelIndex addFolder(FolderData* folder);
@@ -45,9 +55,10 @@ public:
 private:
     FolderData* m_currentFolder;
     QList<FolderData* > m_folderList;
+    FolderType m_folderType;
 
 signals:
-    void folderChanged(const QModelIndex& index);
+    void folderChanged(const FolderType type, const QModelIndex& index);
     void folderAdded(const FolderData* folder, const QModelIndex& index);
     void foldersAddList(const QList<FolderData*> folderList, int folderCounter);
     void folderRemoved(const QModelIndex& index);

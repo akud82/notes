@@ -20,9 +20,18 @@ FolderView::~FolderView()
 
 void FolderView::init()
 {
+    setSelectionMode( QAbstractItemView::SingleSelection );
+    setDropIndicatorShown(true);
+    setAcceptDrops(true);
+    setDragDropMode(DragDropMode::DropOnly);
+    setDragDropOverwriteMode(true);
+    setSelectionBehavior(QAbstractItemView::SelectRows);
+
     setColumnCount(2);
     setMouseTracking(true);
     setUpdatesEnabled(true);
+
+
     viewport()->setAttribute(Qt::WA_Hover);
     setRootIsDecorated(false);
     setContextMenuPolicy(Qt::CustomContextMenu);
@@ -53,7 +62,6 @@ void FolderView::prepareMenu(const QPoint & pos)
     QModelIndex index = indexAt(pos);
 
     QVariant folderVar = n->data(0, FolderModel::FolderID);
-    qDebug() << pos << folderVar;
 
     QAction *newAct = new QAction(QIcon(":/images/trash-16.png"), tr("&Remove"), this);
     newAct->setStatusTip(tr("remove folder"));
@@ -106,8 +114,7 @@ QList<QTreeWidgetItem*> FolderView::items()
 }
 
 void FolderView::onItemDblClicked(QTreeWidgetItem *item, int column)
-{
-    qDebug() << "c-" << column;
+{    
     if(column == 1) {
         item->setFlags(item->flags() | Qt::ItemIsEditable);
         this->editItem(item, column);

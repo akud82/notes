@@ -5,10 +5,21 @@ NoteData::NoteData(QObject *parent)
     : QObject(parent),
       m_isModified(false),
       m_isSelected(false),
+      m_isTemp(false),
       m_folderId(-1),
       m_scrollBarPosition(0)
 {
 
+}
+
+bool NoteData::isTemp() const
+{
+    return m_isTemp;
+}
+
+void NoteData::setTemp(bool isTemp)
+{
+    m_isTemp = isTemp;
 }
 
 int NoteData::id() const

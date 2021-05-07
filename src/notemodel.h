@@ -40,6 +40,8 @@ public:
     Qt::ItemFlags flags(const QModelIndex &index) const Q_DECL_OVERRIDE;
     int rowCount(const QModelIndex &parent = QModelIndex()) const Q_DECL_OVERRIDE;
     void sort(int column, Qt::SortOrder order) Q_DECL_OVERRIDE;
+    Qt::DropActions supportedDropActions() const Q_DECL_OVERRIDE;
+    Qt::DropActions supportedDragActions() const Q_DECL_OVERRIDE;
 
 private:
     QList<NoteData *> m_noteList;

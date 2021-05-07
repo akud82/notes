@@ -119,13 +119,27 @@ void MainWindow::setupTreeView()
 }
 
 void MainWindow::rootSelectionChanged(const QItemSelection &selected, const QItemSelection &deselected) {
-    m_foldersView->clearSelection();
-    m_rootTree->selectionModel()->select(selected, QItemSelectionModel::Select);
+    if(!m_isOperationRunning) {
+        m_isOperationRunning = true;
+
+        m_foldersView->clearSelection();
+        m_rootTree->selectionModel()->select(selected, QItemSelectionModel::Select);
+        onRootSelect();
+
+        m_isOperationRunning = false;
+    }
 }
 
 void MainWindow::folderSelectionChanged(const QItemSelection &selected, const QItemSelection &deselected) {
-    m_rootTree->clearSelection();
-    m_foldersView->selectionModel()->select(selected, QItemSelectionModel::Select);
+    if(!m_isOperationRunning) {
+        m_isOperationRunning = true;
+
+        m_rootTree->clearSelection();
+        m_foldersView->selectionModel()->select(selected, QItemSelectionModel::Select);
+        onFolderSelect();
+
+        m_isOperationRunning = false;
+    }
 }
 
 /*!
@@ -156,7 +170,7 @@ void MainWindow::initData()
             setButtonsAndFieldsEnabled(true);
             emit requestFoldersList();
             emit requestTagsList();
-            emit requestNotesList();
+            emit requestNotesList(m_foldersModel->currentFolderType(), m_foldersModel->currentFolderId());
         });
 
         QFuture<void> migration = QtConcurrent::run(this, &MainWindow::checkMigration);
@@ -165,7 +179,7 @@ void MainWindow::initData()
     } else {
         emit requestFoldersList();
         emit requestTagsList();
-        emit requestNotesList();
+        emit requestNotesList(m_foldersModel->currentFolderType(), m_foldersModel->currentFolderId());
     }
 
     /// Check if it is running with an argument (ex. hide)
@@ -540,6 +554,10 @@ void MainWindow::setupTitleBarButtons()
 void MainWindow::setupSignalsSlots()
 {
     connect(&m_updater, &UpdaterWindow::dontShowUpdateWindowChanged, [=](bool state){m_dontShowUpdateWindow = state;});
+
+    connect(m_foldersModel, &FolderModel::folderChanged, [this](){
+        emit requestNotesList(this->m_foldersModel->currentFolderType(), this->m_foldersModel->currentFolderId());
+    });
 
     connect(m_foldersView, &FolderView::removeFolder, this, &MainWindow::deleteFolder);
 
@@ -955,15 +973,17 @@ QString MainWindow::getNoteDateEditor(QString dateEdited)
  * \param noteID
  * \return
  */
-NoteData* MainWindow::generateNote(const int noteID)
+NoteData* MainWindow::generateNote(const int noteID, bool isTemp)
 {
     NoteData* newNote = new NoteData(this);
     newNote->setId(noteID);
+    newNote->setTemp(isTemp);
 
     QDateTime noteDate = QDateTime::currentDateTime();
+    newNote->setFolderId(m_foldersModel->currentFolderId());
     newNote->setCreationDateTime(noteDate);
     newNote->setLastModificationDateTime(noteDate);
-    newNote->setFullTitle(QStringLiteral("New Note"));
+    newNote->setFullTitle(QString("New Note"));
     return newNote;
 }
 
@@ -984,7 +1004,6 @@ TagData* MainWindow::generateTag(const int tagID)
     TagData* newTag = new TagData(this);
     newTag->setId(tagID);
     newTag->setFullTitle(QStringLiteral("New Tag"));
-
     return newTag;
 }
 
@@ -1045,18 +1064,19 @@ void MainWindow::loadTags(QList<TagData*> tagList, int tagCounter)
  * \param noteCounter
  */
 void MainWindow::loadNotes(QList<NoteData *> noteList, int noteCounter)
-{
-    qDebug() << "loadNotes - " << noteCounter;
+{    
+    m_noteModel->clearNotes();
+
     if(!noteList.isEmpty()){
         m_noteModel->addListNote(noteList);
-        m_noteModel->sort(0, Qt::AscendingOrder);
+        m_noteModel->sort(0, Qt::AscendingOrder);        
     }
 
     m_noteCounter = noteCounter;
 
-    // TODO: move this from here
-    createNewNoteIfEmpty();
+    // TODO: move this from here    
     selectFirstNote();
+    createNewNoteIfEmpty();
 }
 
 /*!
@@ -1065,10 +1085,10 @@ void MainWindow::loadNotes(QList<NoteData *> noteList, int noteCounter)
  * \param noteIndex
  */
 void MainWindow::saveNoteToDB(const QModelIndex& noteIndex)
-{
+{    
     if(noteIndex.isValid() && m_isContentModified){
         QModelIndex indexInSrc = m_notesProxyModel->mapToSource(noteIndex);
-        NoteData* note = m_noteModel->getNote(indexInSrc);
+        NoteData* note = m_noteModel->getNote(indexInSrc);        
         if(note != Q_NULLPTR)
             emit requestCreateUpdateNote(note);
 
@@ -1099,7 +1119,6 @@ void MainWindow::selectFirstNote()
         QModelIndex index = m_notesProxyModel->index(0,0);
         m_noteView->selectionModel()->select(index, QItemSelectionModel::ClearAndSelect);
         m_noteView->setCurrentIndex(index);
-
         m_currentSelectedNoteProxy = index;
         showNoteInEditor(index);
     }
@@ -1111,8 +1130,9 @@ void MainWindow::selectFirstNote()
  */
 void MainWindow::createNewNoteIfEmpty()
 {
-    if(m_notesProxyModel->rowCount() == 0)
+    if(m_notesProxyModel->rowCount() == 0) {
         createNewNote();
+    }
 }
 
 /*!
@@ -1491,6 +1511,45 @@ void MainWindow::createNewFolder()
 
 }
 
+void MainWindow::onRootSelect()
+{
+    if(m_currentSelectedNoteProxy.isValid() && m_isContentModified){
+        saveNoteToDB(m_currentSelectedNoteProxy);
+        m_isContentModified = false;
+    }
+
+    m_isTemp = false;
+
+    FolderModel::FolderType type = FolderModel::AllNotes;
+    QModelIndex rootIndex = m_rootTree->selectionModel()->currentIndex();
+    if(rootIndex.isValid()) {
+        if(rootIndex.row() > 0) {
+            type = FolderModel::Trash;
+        } else {
+            type = FolderModel::AllNotes;
+        }
+
+        m_foldersModel->setCurrentFolder(type, QModelIndex());
+    }
+}
+
+void MainWindow::onFolderSelect()
+{
+    if(m_currentSelectedNoteProxy.isValid() && m_isContentModified){
+        saveNoteToDB(m_currentSelectedNoteProxy);
+        m_isContentModified = false;
+    }
+
+    m_isTemp = false;
+
+    FolderModel::FolderType type = FolderModel::None;
+    QModelIndex idx = m_foldersView->selectionModel()->currentIndex();
+    if(idx.isValid()) {
+        type = FolderModel::Folder;
+        m_foldersModel->setCurrentFolder(type, idx);
+    }
+}
+
 void MainWindow::deleteFolder(const QModelIndex& folderIndex)
 {
     if(folderIndex.isValid()) {
@@ -1528,10 +1587,11 @@ void MainWindow::createNewNote()
 
         if(!m_isTemp){
             ++m_noteCounter;
-            NoteData* tmpNote = generateNote(m_noteCounter);
             m_isTemp = true;
 
-            // insert the new note to NoteModel
+            NoteData* tmpNote = generateNote(m_noteCounter, m_isTemp);
+
+            // insert the new note to NoteModel            
             QModelIndex indexSrc = m_noteModel->insertNote(tmpNote, 0);
 
             // update the editor header date label
@@ -1541,8 +1601,7 @@ void MainWindow::createNewNote()
 
             // update the current selected index
             m_currentSelectedNoteProxy = m_notesProxyModel->mapFromSource(indexSrc);
-
-        }else{
+        }else{            
             int row = m_currentSelectedNoteProxy.row();
             m_noteView->animateAddedRow(QModelIndex(),row, row);
         }
@@ -1916,7 +1975,7 @@ void MainWindow::executeImport(const bool replace)
         emit requestFoldersList();
 
         m_noteModel->clearNotes();
-        emit requestNotesList();        
+        emit requestNotesList(m_foldersModel->currentFolderType(), m_foldersModel->currentFolderId());
     }
 }
 
@@ -2182,9 +2241,7 @@ void MainWindow::mousePressEvent(QMouseEvent* event)
  * \param event
  */
 void MainWindow::mouseMoveEvent(QMouseEvent* event)
-{
-    qDebug() << "mm " << event;
-
+{   
     if(!m_canStretchWindow && !m_canMoveWindow){
         m_mousePressX = event->x();
         m_mousePressY = event->y();

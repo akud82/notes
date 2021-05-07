@@ -192,7 +192,7 @@ private:
     void restoreStates();
     QString getFirstLine(const QString& str);
     QString getNoteDateEditor (QString dateEdited);
-    NoteData* generateNote(const int noteID);
+    NoteData* generateNote(const int noteID, bool isTemp);
     FolderData* generateFolder(const int folderID);
     TagData* generateTag(const int tagID);
     QDateTime getQDateTime(QString date);
@@ -219,6 +219,8 @@ private:
 
 private slots:
     void initData();
+    void onFolderSelect();
+    void onRootSelect();
     void loadFolders(QList<FolderData*> folderList, int folderCounter);
     void loadTags(QList<TagData*> tagList, int tagCounter);
     void loadNotes(QList<NoteData*> noteList, int noteCounter);
@@ -243,7 +245,7 @@ private slots:
     void onYellowMinimizeButtonClicked();
     void onRedCloseButtonClicked();
     void createNewNote();    
-    void deleteNote(const QModelIndex& noteIndex, bool isFromUser=true);
+    void deleteNote(const QModelIndex& noteIndex, bool isFromUser=true);    
     void deleteSelectedNote();
     void deleteSelectedFolder();
     void createNewFolder();
@@ -286,7 +288,7 @@ signals:
     void requestDeleteTag(TagData* note);
     void requestForceLastTagIndexValue(int index);
 
-    void requestNotesList();    
+    void requestNotesList(FolderModel::FolderType type, int folderId);
     void requestCreateUpdateNote(NoteData* note);
     void requestDeleteNote(NoteData* note);   
     void requestForceLastNoteIndexValue(int index);

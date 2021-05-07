@@ -1,4 +1,5 @@
 #include "foldermodel.h"
+#include <QDebug>
 
 FolderModel::FolderModel(QObject *parent)
     : QAbstractItemModel(parent),
@@ -6,15 +7,32 @@ FolderModel::FolderModel(QObject *parent)
 {
 }
 
+int FolderModel::currentFolderId()
+{
+    if(m_currentFolder != Q_NULLPTR)
+        return m_currentFolder->id();
+
+    return -1;
+}
+
 FolderData* FolderModel::currentFolder()
 {
     return m_currentFolder;
 }
 
-void FolderModel::setCurrentFolder(const QModelIndex& index)
+FolderModel::FolderType FolderModel::currentFolderType()
 {
-    m_currentFolder = getFolder(index);
-    emit folderChanged(index);
+    return m_folderType;
+}
+
+void FolderModel::setCurrentFolder(const FolderType type, const QModelIndex& index)
+{
+    FolderData* fdata = getFolder(index);
+    if(type != m_folderType || fdata != m_currentFolder) {
+        m_folderType = type;
+        m_currentFolder = getFolder(index);
+        emit folderChanged(type, index);
+    }
 }
 
 // Folder specific functionality:
@@ -28,7 +46,6 @@ QModelIndex FolderModel::addFolder(FolderData* folder)
 
     QModelIndex index = createIndex(rowCnt, 0);
     emit folderAdded(folder, index);
-
     return index;
 };
 
