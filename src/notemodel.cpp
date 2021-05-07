@@ -1,5 +1,8 @@
 #include "notemodel.h"
+#include <QBuffer>
 #include <QDebug>
+#include <QMimeData>
+#include <QDataStream>
 
 NoteModel::NoteModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -9,7 +12,26 @@ NoteModel::NoteModel(QObject *parent)
 
 NoteModel::~NoteModel()
 {
+}
 
+QMimeData* NoteModel::mimeData(const QModelIndexList &indexes) const
+{
+    QMimeData* data = QAbstractItemModel::mimeData(indexes);
+
+    QByteArray itemData;
+    QDataStream dataStream(&itemData, QIODevice::WriteOnly);
+    encodeData(indexes, dataStream);
+    data->setData("application/x-note-model", itemData);
+    return data;
+}
+
+void NoteModel::encodeData(const QModelIndexList &indexes, QDataStream &stream) const
+{
+    for(int i = 0; i<indexes.length(); i++) {
+        QModelIndex idx = indexes[i];
+        NoteData* d = m_noteList.at(idx.row());
+        stream << d;
+    }
 }
 
 QModelIndex NoteModel::addNote(NoteData* note)

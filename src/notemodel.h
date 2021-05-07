@@ -43,6 +43,9 @@ public:
     Qt::DropActions supportedDropActions() const Q_DECL_OVERRIDE;
     Qt::DropActions supportedDragActions() const Q_DECL_OVERRIDE;
 
+    void encodeData(const QModelIndexList &indexes, QDataStream &stream) const;
+
+    virtual QMimeData *mimeData(const QModelIndexList &indexes) const Q_DECL_OVERRIDE;
 private:
     QList<NoteData *> m_noteList;
 

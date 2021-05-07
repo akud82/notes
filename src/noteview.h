@@ -33,6 +33,7 @@ private:
     bool m_isScrollBarHidden;
     bool m_animationEnabled;
     bool m_isMousePressed;
+    QMimeData* m_mimeData;
     QPoint m_dragStartPosition;
     QModelIndex m_dragModelIndex;
     int m_rowHeight;

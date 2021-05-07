@@ -18,8 +18,13 @@ public:
     QModelIndex selectedItemIndex() const;
 
     void dropEvent(QDropEvent *event) override;
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dragMoveEvent(QDragMoveEvent *event) override;
+    void dragLeaveEvent(QDragLeaveEvent *event) override;
 
 private:
+    bool m_dragOver;
+
     QTreeWidgetItem* createItem(const FolderData* folder);    
 
 signals:

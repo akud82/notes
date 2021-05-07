@@ -123,7 +123,13 @@ void NoteData::setCreationDateTime(const QDateTime&creationDateTime)
 }
 
 QDataStream &operator<<(QDataStream &stream, const NoteData* noteData) {
-    return stream << noteData->id() << noteData->folderId() << noteData->fullTitle() << noteData->creationDateTime() << noteData->lastModificationdateTime() << noteData->deletionDateTime() << noteData->content();
+    return stream << noteData->id()
+                  << noteData->folderId()
+                  << noteData->fullTitle()
+                  << noteData->creationDateTime()
+                  << noteData->lastModificationdateTime()
+                  << noteData->deletionDateTime()
+                  << noteData->content();
 }
 
 QDataStream &operator>>(QDataStream &stream, NoteData* &noteData){

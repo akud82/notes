@@ -11,6 +11,7 @@
 #include <QScrollBar>
 #include <QDrag>
 #include <QModelIndex>
+#include <QMimeData>
 
 NoteView::NoteView(QWidget *parent)
     : QListView(parent),
@@ -72,7 +73,7 @@ void NoteView::rowsInserted(const QModelIndex &parent, int start, int end)
 }
 
 void NoteView::startDrag(Qt::DropActions supportedActions)
-{    
+{
     QListView::startDrag(supportedActions);
 }
 
@@ -218,6 +219,13 @@ void NoteView::mousePressEvent(QMouseEvent*e)
             // don't drag temporary notes
             if(!note->isTemp()) {
                 m_dragModelIndex = srcIdx;
+
+                QByteArray itemData;
+                QDataStream dataStream(&itemData, QIODevice::WriteOnly);
+                dataStream << note;
+
+                m_mimeData = new QMimeData;
+                m_mimeData->setData("custom/note-data", itemData);
             }
             else m_dragModelIndex = QModelIndex();
         } else {

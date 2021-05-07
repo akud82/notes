@@ -7,8 +7,11 @@
 #include <QList>
 #include <QMenu>
 #include <QAction>
+#include <QDragEnterEvent>
+#include <QMimeData>
+#include <QStandardItemModel>
 
-FolderView::FolderView(QWidget *parent): QTreeWidget(parent)
+FolderView::FolderView(QWidget *parent): QTreeWidget(parent), m_dragOver(false)
 {
     this->setAttribute(Qt::WA_MacShowFocusRect, 0);
     QTimer::singleShot(0, this, SLOT(init()));    
@@ -30,7 +33,6 @@ void FolderView::init()
     setColumnCount(2);
     setMouseTracking(true);
     setUpdatesEnabled(true);
-
 
     viewport()->setAttribute(Qt::WA_Hover);
     setRootIsDecorated(false);
@@ -58,17 +60,42 @@ QModelIndex FolderView::selectedItemIndex() const
 
 void FolderView::dropEvent(QDropEvent *event)
 {
+    qDebug() << "dropEventS" << event;
+    m_dragOver = false;
 
+    QByteArray encoded = event->mimeData()->data("application/x-note-model");
+    QDataStream stream(&encoded, QIODevice::ReadOnly);
+    QTreeWidgetItem* fitem = itemAt(event->pos());
+    int folderId = fitem->data(0, FolderModel::FolderID).toInt();
+
+    qDebug() << "dropEvent-ToFolder" << folderId << event->mimeData();
+
+    while (!stream.atEnd()) {
+        NoteData* item = new NoteData();
+        stream >> item;
+        qDebug() << "dropEvent-Note" << item->id();
+    }
+
+    QAbstractItemView::dropEvent(event);
 }
 
 void FolderView::dragEnterEvent(QDragEnterEvent *event)
-{};
+{
+    event->setAccepted(true);
+    m_dragOver = true;
+    QAbstractItemView::dragEnterEvent(event);
+};
 
 void FolderView::dragMoveEvent(QDragMoveEvent *event)
-{};
+{
+    QAbstractItemView::dragMoveEvent(event);
+};
 
 void FolderView::dragLeaveEvent(QDragLeaveEvent *event)
-{};
+{
+    m_dragOver = false;
+    QAbstractItemView::dragLeaveEvent(event);
+};
 
 void FolderView::prepareMenu(const QPoint & pos)
 {
