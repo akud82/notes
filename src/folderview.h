@@ -1,0 +1,40 @@
+#ifndef FOLDERVIEW_H
+#define FOLDERVIEW_H
+
+#include "foldermodel.h"
+#include <QTreeWidget>
+#include <QObject>
+#include <QWidget>
+
+class FolderView : public QTreeWidget
+{
+    Q_OBJECT
+public:
+    explicit FolderView(QWidget* parent = Q_NULLPTR);
+    ~FolderView();
+
+    QSize treeHeight(QTreeWidget* widget);
+    QList<QTreeWidgetItem*> items();
+    QModelIndex selectedItemIndex() const;
+
+private:
+    QTreeWidgetItem* createItem(const FolderData* folder);    
+
+signals:
+    void removeFolder(const QModelIndex& index);
+
+private slots:
+    void init();
+
+public slots:
+    void prepareMenu(const QPoint & pos);
+    void onItemDblClicked(QTreeWidgetItem* item, int column);
+    void onUpdateTreeHeight();
+    void onFolderAdded(const FolderData* folder, const QModelIndex& index);
+    void onFoldersAddList(const QList<FolderData*> folderList);
+    void onFolderRemoved(const QModelIndex& index);
+    void onFolderCleared();
+    void onFolderDataChanged(const QModelIndex &index, const QVariant &value, int role);
+};
+
+#endif // FOLDERVIEW_H

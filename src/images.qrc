@@ -37,5 +37,9 @@
         <file>images/windows_minimize_hovered.png</file>
         <file>images/windows_minimize_pressed.png</file>
         <file>images/windows_minimize_regular.png</file>
+        <file>images/trash-16.png</file>
+        <file>images/allnotes-16.png</file>
+        <file>images/plus-16.png</file>
+        <file>images/sidebar-16.png</file>
     </qresource>
 </RCC>

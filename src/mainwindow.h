@@ -25,6 +25,7 @@
 #include <QAction>
 
 #include <QAutostart>
+#include <QTreeWidget>
 
 #include "notedata.h"
 #include "notemodel.h"
@@ -32,6 +33,8 @@
 #include "updaterwindow.h"
 #include "dbmanager.h"
 #include "markdownhighlighter.h"
+#include "folderview.h"
+#include "foldermodel.h"
 
 namespace Ui {
 class MainWindow;
@@ -107,21 +110,35 @@ private:
     QPushButton* m_yellowMinimizeButton;
     QHBoxLayout m_trafficLightLayout;
     QPushButton* m_newNoteButton;
+    QPushButton* m_newFolderButton;
+    QPushButton* m_newTagsButton;
     QPushButton* m_trashButton;
     QPushButton* m_dotsButton;
+    QPushButton* m_sidebarButton;
     QTextEdit* m_textEdit;
     QLineEdit* m_searchEdit;
     QLabel* m_editorDateLabel;
     QSplitter *m_splitter;
+    QSplitter *m_splitterMain;
+    QTreeWidget *m_tagsTree;
+    QTreeWidget *m_rootTree;
     QSystemTrayIcon* m_trayIcon;
     QAction* m_restoreAction;
     QAction* m_quitAction;
     QMenu* m_trayIconMenu;
 
+    FolderView *m_foldersView;
+    FolderModel* m_foldersModel;
+
     NoteView* m_noteView;
     NoteModel* m_noteModel;
+
     NoteModel* m_deletedNotesModel;
-    QSortFilterProxyModel* m_proxyModel;
+
+    QSortFilterProxyModel* m_notesProxyModel;
+    QSortFilterProxyModel* m_foldersProxyModel;
+    QSortFilterProxyModel* m_tagsProxyModel;
+
     QModelIndex m_currentSelectedNoteProxy;
     QModelIndex m_selectedNoteBeforeSearchingInSource;
     QQueue<QString> m_searchQueue;
@@ -135,10 +152,13 @@ private:
     int m_mousePressX;
     int m_mousePressY;
     int m_noteCounter;
+    int m_folderCounter;
+    int m_tagCounter;
     int m_trashCounter;
     int m_layoutMargin;
     int m_shadowWidth;
     int m_noteListWidth;
+    int m_foldersListWidth;
     bool m_canMoveWindow;
     bool m_canStretchWindow;
     bool m_isTemp;
@@ -149,12 +169,13 @@ private:
     bool m_alwaysStayOnTop;
     bool m_useNativeWindowFrame;
 
+    void setupTreeView();
     void setupMainWindow();
     void setupFonts();
     void setupTrayIcon();
     void setupKeyboardShortcuts();
-    void setupNewNoteButtonAndTrahButton();
-    void setupSplitter();
+    void setupPushButtons();
+    void setupSplitters();
     void setupLine();
     void setupRightFrame();
     void setupTitleBarButtons();
@@ -172,6 +193,8 @@ private:
     QString getFirstLine(const QString& str);
     QString getNoteDateEditor (QString dateEdited);
     NoteData* generateNote(const int noteID);
+    FolderData* generateFolder(const int folderID);
+    TagData* generateTag(const int tagID);
     QDateTime getQDateTime(QString date);
     void showNoteInEditor(const QModelIndex& noteIndex);
     void sortNotesList(QStringList &stringNotesList);
@@ -195,8 +218,14 @@ private:
     void setMargins(QMargins margins);
 
 private slots:
-    void InitData();
-    void loadNotes(QList<NoteData *> noteList, int noteCounter);
+    void initData();
+    void loadFolders(QList<FolderData*> folderList, int folderCounter);
+    void loadTags(QList<TagData*> tagList, int tagCounter);
+    void loadNotes(QList<NoteData*> noteList, int noteCounter);
+    void onNewFolderButtonPressed();
+    void onNewFolderButtonClicked();
+    void onNewTagButtonPressed();
+    void onNewTagButtonClicked();
     void onNewNoteButtonPressed();
     void onNewNoteButtonClicked();
     void onTrashButtonPressed();
@@ -213,9 +242,14 @@ private slots:
     void onGreenMaximizeButtonClicked();
     void onYellowMinimizeButtonClicked();
     void onRedCloseButtonClicked();
-    void createNewNote();
+    void createNewNote();    
     void deleteNote(const QModelIndex& noteIndex, bool isFromUser=true);
     void deleteSelectedNote();
+    void deleteSelectedFolder();
+    void createNewFolder();
+    void deleteFolder(const QModelIndex& folderIndex);
+    void createNewTag();
+    void deleteTag(const QModelIndex& tagIndex);
     void setFocusOnCurrentNote();
     void selectNoteDown();
     void selectNoteUp();
@@ -236,18 +270,33 @@ private slots:
     void setUseNativeWindowFrame(bool useNativeWindowFrame);
     void toggleStayOnTop();
     void onSearchEditReturnPressed();
+    void folderSelectionChanged(const QItemSelection &selected, const QItemSelection &deselected);
+    void rootSelectionChanged(const QItemSelection &selected, const QItemSelection &deselected);
 
 signals:
-    void requestNotesList();
     void requestOpenDBManager(QString path, bool doCreate);
+
+    void requestFoldersList();
+    void requestCreateUpdateFolder(FolderData* note);
+    void requestDeleteFolder(FolderData* note);
+    void requestForceLastFolderIndexValue(int index);
+
+    void requestTagsList();
+    void requestCreateUpdateTag(TagData* note);
+    void requestDeleteTag(TagData* note);
+    void requestForceLastTagIndexValue(int index);
+
+    void requestNotesList();    
     void requestCreateUpdateNote(NoteData* note);
-    void requestDeleteNote(NoteData* note);
+    void requestDeleteNote(NoteData* note);   
+    void requestForceLastNoteIndexValue(int index);
+
     void requestRestoreNotes(QList<NoteData *> noteList);
     void requestImportNotes(QList<NoteData *> noteList);
     void requestExportNotes(QString fileName);
     void requestMigrateNotes(QList<NoteData *> noteList);
     void requestMigrateTrash(QList<NoteData *> noteList);
-    void requestForceLastRowIndexValue(int index);
+
 };
 
 #endif // MAINWINDOW_H

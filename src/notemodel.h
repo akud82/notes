@@ -12,7 +12,7 @@ class NoteModel : public QAbstractListModel
 public:
 
     enum NoteRoles{
-        NoteID = Qt::UserRole + 1,
+        NoteID = 0x0100 + 1,
         NoteFullTitle,
         NoteCreationDateTime,
         NoteLastModificationDateTime,

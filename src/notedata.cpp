@@ -5,6 +5,7 @@ NoteData::NoteData(QObject *parent)
     : QObject(parent),
       m_isModified(false),
       m_isSelected(false),
+      m_folderId(-1),
       m_scrollBarPosition(0)
 {
 
@@ -18,6 +19,16 @@ int NoteData::id() const
 void NoteData::setId(const int &id)
 {
     m_id = id;
+}
+
+int NoteData::folderId() const
+{
+    return m_folderId;
+}
+
+void NoteData::setFolderId(const int &folderId)
+{
+    m_folderId = folderId;
 }
 
 QString NoteData::fullTitle() const
@@ -101,21 +112,25 @@ void NoteData::setCreationDateTime(const QDateTime&creationDateTime)
 }
 
 QDataStream &operator<<(QDataStream &stream, const NoteData* noteData) {
-    return stream << noteData->id() << noteData->fullTitle() << noteData->creationDateTime() << noteData->lastModificationdateTime() << noteData->content();
+    return stream << noteData->id() << noteData->folderId() << noteData->fullTitle() << noteData->creationDateTime() << noteData->lastModificationdateTime() << noteData->deletionDateTime() << noteData->content();
 }
 
 QDataStream &operator>>(QDataStream &stream, NoteData* &noteData){
     noteData = new NoteData();
     int id;
+    int folderId;
     QString fullTitle;
     QDateTime lastModificationDateTime;
+    QDateTime deletionDateTime;
     QDateTime creationDateTime;
     QString content;
-    stream >> id >> fullTitle >> creationDateTime >> lastModificationDateTime >> content;
+    stream >> id >> folderId >> fullTitle >> creationDateTime >> lastModificationDateTime >> deletionDateTime >> content;
     noteData->setId(id);
+    noteData->setFolderId(folderId);
     noteData->setFullTitle(fullTitle);
     noteData->setLastModificationDateTime(lastModificationDateTime);
     noteData->setCreationDateTime(creationDateTime);
+    noteData->setDeletionDateTime(deletionDateTime);
     noteData->setContent(content);
     return stream;
 }

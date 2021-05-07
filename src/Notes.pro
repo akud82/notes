@@ -33,7 +33,12 @@ SOURCES += \
     $$PWD/noteview.cpp \
     $$PWD/singleinstance.cpp \
     $$PWD/updaterwindow.cpp \
-    $$PWD/dbmanager.cpp
+    $$PWD/dbmanager.cpp \
+    folderdata.cpp \
+    foldermodel.cpp \
+    folderview.cpp \
+    hoverframe.cpp \
+    tagdata.cpp
 
 HEADERS  += \
     $$PWD/mainwindow.h \
@@ -43,7 +48,12 @@ HEADERS  += \
     $$PWD/noteview.h \
     $$PWD/singleinstance.h \
     $$PWD/updaterwindow.h \
-    $$PWD/dbmanager.h
+    $$PWD/dbmanager.h \
+    folderdata.h \
+    foldermodel.h \
+    folderview.h \
+    hoverframe.h \
+    tagdata.h
 
 FORMS += \
     $$PWD/mainwindow.ui \

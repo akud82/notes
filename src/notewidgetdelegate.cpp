@@ -52,8 +52,8 @@ void NoteWidgetDelegate::setState(States NewState, QModelIndex index)
 {
     m_animatedIndex = index;
 
-    auto startAnimation = [this](QTimeLine::Direction diretion, int duration){
-        m_timeLine->setDirection(diretion);
+    auto startAnimation = [this](QTimeLine::Direction direction, int duration){
+        m_timeLine->setDirection(direction);
         m_timeLine->setDuration(duration);
         m_timeLine->start();
     };

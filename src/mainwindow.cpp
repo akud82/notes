@@ -39,23 +39,34 @@ MainWindow::MainWindow(QWidget *parent) :
     m_yellowMinimizeButton(Q_NULLPTR),
     m_trafficLightLayout(Q_NULLPTR),
     m_newNoteButton(Q_NULLPTR),
+    m_newFolderButton(Q_NULLPTR),
+    m_newTagsButton(Q_NULLPTR),
     m_trashButton(Q_NULLPTR),
-    m_dotsButton(Q_NULLPTR),
-    m_textEdit(Q_NULLPTR),
+    m_dotsButton(Q_NULLPTR),    
+    m_textEdit(Q_NULLPTR),    
     m_searchEdit(Q_NULLPTR),
-    m_editorDateLabel(Q_NULLPTR),
+    m_editorDateLabel(Q_NULLPTR),    
     m_splitter(Q_NULLPTR),
+    m_splitterMain(Q_NULLPTR),    
+    m_tagsTree(Q_NULLPTR),
+    m_rootTree(Q_NULLPTR),
     m_trayIcon(new QSystemTrayIcon(this)),
     m_restoreAction(new QAction(tr("&Hide Notes"), this)),
     m_quitAction(new QAction(tr("&Quit"), this)),
     m_trayIconMenu(new QMenu(this)),
+    m_foldersView(Q_NULLPTR),
+    m_foldersModel(new FolderModel(this)),
     m_noteView(Q_NULLPTR),
     m_noteModel(new NoteModel(this)),
     m_deletedNotesModel(new NoteModel(this)),
-    m_proxyModel(new QSortFilterProxyModel(this)),
+    m_notesProxyModel(new QSortFilterProxyModel(this)),
+    m_foldersProxyModel(new QSortFilterProxyModel(this)),
+    m_tagsProxyModel(new QSortFilterProxyModel(this)),
     m_dbManager(Q_NULLPTR),
     m_dbThread(Q_NULLPTR),
     m_noteCounter(0),
+    m_folderCounter(0),
+    m_tagCounter(0),
     m_trashCounter(0),
     m_layoutMargin(10),
     m_shadowWidth(10),
@@ -75,8 +86,9 @@ MainWindow::MainWindow(QWidget *parent) :
     setupFonts();
     setupTrayIcon();
     setupKeyboardShortcuts();
-    setupNewNoteButtonAndTrahButton();
-    setupSplitter();
+    setupTreeView();
+    setupPushButtons();
+    setupSplitters();
     setupLine();
     setupRightFrame();
     setupTitleBarButtons();
@@ -90,23 +102,46 @@ MainWindow::MainWindow(QWidget *parent) :
 
     m_highlighter = new MarkdownHighlighter(m_textEdit->document());
 
-    QTimer::singleShot(200,this, SLOT(InitData()));
+    QTimer::singleShot(200,this, SLOT(initData()));
+}
+
+void MainWindow::setupTreeView()
+{
+    m_tagsTree->expandAll();
+    m_foldersView->expandAll();
+    m_rootTree->expandAll();
+
+    connect(m_foldersView->selectionModel(), SIGNAL(selectionChanged(const QItemSelection&,const QItemSelection&)),
+            this, SLOT(folderSelectionChanged(const QItemSelection&, const QItemSelection&)));
+
+    connect(m_rootTree->selectionModel(), SIGNAL(selectionChanged(const QItemSelection&,const QItemSelection&)),
+            this, SLOT(rootSelectionChanged(const QItemSelection&, const QItemSelection&)));
+}
+
+void MainWindow::rootSelectionChanged(const QItemSelection &selected, const QItemSelection &deselected) {
+    m_foldersView->clearSelection();
+    m_rootTree->selectionModel()->select(selected, QItemSelectionModel::Select);
+}
+
+void MainWindow::folderSelectionChanged(const QItemSelection &selected, const QItemSelection &deselected) {
+    m_rootTree->clearSelection();
+    m_foldersView->selectionModel()->select(selected, QItemSelectionModel::Select);
 }
 
 /*!
  * \brief MainWindow::InitData
  * Init the data from database and select the first note if there is one
  */
-void MainWindow::InitData()
+void MainWindow::initData()
 {
     QFileInfo fi(m_settingsDatabase->fileName());
     QDir dir(fi.absolutePath());
     QString oldNoteDBPath(dir.path() + QStringLiteral("/Notes.ini"));
     QString oldTrashDBPath(dir.path() + QStringLiteral("/Trash.ini"));
 
-    bool exist = (QFile::exists(oldNoteDBPath) || QFile::exists(oldTrashDBPath));
+    bool existOldData = (QFile::exists(oldNoteDBPath) || QFile::exists(oldTrashDBPath));
 
-    if(exist){
+    if(existOldData){
         QProgressDialog* pd = new QProgressDialog(tr("Migrating database, please wait."), QString(), 0, 0, this);
         pd->setCancelButton(Q_NULLPTR);
         pd->setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
@@ -119,6 +154,8 @@ void MainWindow::InitData()
         connect(watcher, &QFutureWatcher<void>::finished, this, [&, pd](){
             pd->deleteLater();
             setButtonsAndFieldsEnabled(true);
+            emit requestFoldersList();
+            emit requestTagsList();
             emit requestNotesList();
         });
 
@@ -126,6 +163,8 @@ void MainWindow::InitData()
         watcher->setFuture(migration);
 
     } else {
+        emit requestFoldersList();
+        emit requestTagsList();
         emit requestNotesList();
     }
 
@@ -198,6 +237,33 @@ void MainWindow::resizeEvent(QResizeEvent* event)
         }
     }
 
+    if(m_splitterMain != Q_NULLPTR){
+        // restore folders width
+        QList<int> sizes = m_splitterMain->sizes();
+        if(sizes.at(0) != 0){
+            sizes[0] = m_foldersListWidth;
+            sizes[1] = m_splitterMain->width() - m_foldersListWidth;
+            m_splitterMain->setSizes(sizes);
+        }
+    }
+
+    if(m_foldersView != Q_NULLPTR){
+         QSize size = m_foldersView->treeHeight(m_foldersView);
+         m_foldersView->setFixedHeight(size.height());
+    }
+
+    if(m_tagsTree != Q_NULLPTR){
+        // TODO: move method
+        QSize size = m_foldersView->treeHeight(m_tagsTree);
+        m_tagsTree->setFixedHeight(size.height());
+    }
+
+    if(m_rootTree != Q_NULLPTR){
+        // TODO: move method
+        QSize size = m_foldersView->treeHeight(m_rootTree);
+        m_rootTree->setFixedHeight(size.height());
+    }
+
     QMainWindow::resizeEvent(event);
 }
 
@@ -243,12 +309,19 @@ void MainWindow::setupMainWindow()
 #endif
 
     m_newNoteButton = ui->newNoteButton;
+    m_newFolderButton = ui->addFolderBtn;
+    m_newTagsButton = ui->addTagBtn;
     m_trashButton = ui->trashButton;
     m_dotsButton = ui->dotsButton;
+    m_sidebarButton = ui->sidebarBtn;
     m_searchEdit = ui->searchEdit;
     m_textEdit = ui->textEdit;
     m_editorDateLabel = ui->editorDateLabel;
     m_splitter = ui->splitter;
+    m_splitterMain = ui->splitter_2;
+    m_foldersView = ui->treeFolders;
+    m_tagsTree = ui->treeTags;
+    m_rootTree = ui->treeRoot;
 
 #ifndef _WIN32
     QMargins margins(m_layoutMargin, m_layoutMargin, m_layoutMargin, m_layoutMargin);
@@ -257,7 +330,18 @@ void MainWindow::setupMainWindow()
     ui->verticalSpacer->changeSize(0, 7, QSizePolicy::Fixed, QSizePolicy::Fixed);
     ui->verticalSpacer_upEditorDateLabel->changeSize(0, 27, QSizePolicy::Fixed, QSizePolicy::Fixed);
 #endif
-    ui->frame->installEventFilter(this);
+    ui->notesFrame->installEventFilter(this);
+
+    // handle hover folder
+    QPushButton* fbtn = ui->addFolderBtn;
+    connect(ui->foldersHeaderFrame, &HoverFrame::hoverEnter, fbtn, [fbtn](){ fbtn->setVisible(true);  });
+    connect(ui->foldersHeaderFrame, &HoverFrame::hoverLeave, fbtn, [fbtn](){ fbtn->setVisible(false);  });
+
+    // handle hover tag
+    QPushButton* tbtn = ui->addTagBtn;
+    connect(ui->tagsHeaderFrame, &HoverFrame::hoverEnter, tbtn, [tbtn](){ tbtn->setVisible(true);  });
+    connect(ui->tagsHeaderFrame, &HoverFrame::hoverLeave, tbtn, [tbtn](){ tbtn->setVisible(false);  });
+
     ui->centralWidget->setMouseTracking(true);
     this->setMouseTracking(true);
 
@@ -269,6 +353,8 @@ void MainWindow::setupMainWindow()
     m_newNoteButton->setToolTip(tr("Create New Note"));
     m_trashButton->setToolTip(tr("Delete Selected Note"));
     m_dotsButton->setToolTip(tr("Open Menu"));
+
+    setCentralWidget(ui->centralWidget);
 }
 
 /*!
@@ -308,6 +394,7 @@ void MainWindow::setupKeyboardShortcuts()
 {
     new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_N), this, SLOT(onNewNoteButtonClicked()));
     new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_D), this, SLOT(deleteSelectedNote()));
+    new QShortcut(QKeySequence(Qt::Key_Delete), this, SLOT(deleteSelectedFolder()));
     new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_F), m_searchEdit, SLOT(setFocus()));
     new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_E), m_searchEdit, SLOT(clear()));
     new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_L), this, SLOT(setFocusOnCurrentNote()));
@@ -349,7 +436,7 @@ void MainWindow::setupKeyboardShortcuts()
  * needs to be more than 50 and less than 34 respectively.
  * So some modifications needs to be done.
  */
-void MainWindow::setupNewNoteButtonAndTrahButton()
+void MainWindow::setupPushButtons()
 {
     QString ss = QStringLiteral("QPushButton { "
                  "  border: none; "
@@ -359,18 +446,30 @@ void MainWindow::setupNewNoteButtonAndTrahButton()
     m_newNoteButton->setStyleSheet(ss);
     m_trashButton->setStyleSheet(ss);
     m_dotsButton->setStyleSheet(ss);
+    m_newTagsButton->setStyleSheet(ss);
+    m_newFolderButton->setStyleSheet(ss);
+    m_sidebarButton->setStyleSheet(ss);
 
     m_newNoteButton->installEventFilter(this);
     m_trashButton->installEventFilter(this);
     m_dotsButton->installEventFilter(this);
+    m_newTagsButton->installEventFilter(this);
+    m_newFolderButton->installEventFilter(this);
+    m_sidebarButton->installEventFilter(this);
+
+    m_newFolderButton->setVisible(false);
+    m_newTagsButton->setVisible(false);
 }
 
 /*!
  * \brief MainWindow::setupSplitter
  * Set up the splitter that control the size of the scrollArea and the textEdit
  */
-void MainWindow::setupSplitter()
+void MainWindow::setupSplitters()
 {
+    m_splitterMain->setCollapsible(0, false);
+    m_splitterMain->setCollapsible(1, false);
+
     m_splitter->setCollapsible(0, false);
     m_splitter->setCollapsible(1, false);
 }
@@ -441,9 +540,9 @@ void MainWindow::setupTitleBarButtons()
 void MainWindow::setupSignalsSlots()
 {
     connect(&m_updater, &UpdaterWindow::dontShowUpdateWindowChanged, [=](bool state){m_dontShowUpdateWindow = state;});
-    // actions
-    // connect(rightToLeftActionion, &QAction::triggered, this, );
-    //connect(checkForUpdatesAction, &QAction::triggered, this, );
+
+    connect(m_foldersView, &FolderView::removeFolder, this, &MainWindow::deleteFolder);
+
     // green button
     connect(m_greenMaximizeButton, &QPushButton::pressed, this, &MainWindow::onGreenMaximizeButtonPressed);
     connect(m_greenMaximizeButton, &QPushButton::clicked, this, &MainWindow::onGreenMaximizeButtonClicked);
@@ -453,6 +552,12 @@ void MainWindow::setupSignalsSlots()
     // yellow button
     connect(m_yellowMinimizeButton, &QPushButton::pressed, this, &MainWindow::onYellowMinimizeButtonPressed);
     connect(m_yellowMinimizeButton, &QPushButton::clicked, this, &MainWindow::onYellowMinimizeButtonClicked);
+    // new folder
+    connect(m_newFolderButton, &QPushButton::pressed, this, &MainWindow::onNewFolderButtonPressed);
+    connect(m_newFolderButton, &QPushButton::clicked, this, &MainWindow::onNewFolderButtonClicked);
+    // new tag
+    connect(m_newTagsButton, &QPushButton::pressed, this, &MainWindow::onNewTagButtonPressed);
+    connect(m_newTagsButton, &QPushButton::clicked, this, &MainWindow::onNewTagButtonClicked);
     // new note button
     connect(m_newNoteButton, &QPushButton::pressed, this, &MainWindow::onNewNoteButtonPressed);
     connect(m_newNoteButton, &QPushButton::clicked, this, &MainWindow::onNewNoteButtonClicked);
@@ -473,11 +578,11 @@ void MainWindow::setupSignalsSlots()
     connect(m_noteView, &NoteView::pressed, this, &MainWindow::onNotePressed);
     // noteView viewport pressed
     connect(m_noteView, &NoteView::viewportPressed, this, [this](){
-        if(m_isTemp && m_proxyModel->rowCount() > 1){
-            QModelIndex indexInProxy = m_proxyModel->index(1, 0);
+        if(m_isTemp && m_notesProxyModel->rowCount() > 1){
+            QModelIndex indexInProxy = m_notesProxyModel->index(1, 0);
             selectNote(indexInProxy);
-        }else if(m_isTemp && m_proxyModel->rowCount() == 1){
-            QModelIndex indexInProxy = m_proxyModel->index(0, 0);
+        }else if(m_isTemp && m_notesProxyModel->rowCount() == 1){
+            QModelIndex indexInProxy = m_notesProxyModel->index(0, 0);
             m_editorDateLabel->clear();
             deleteNote(indexInProxy, false);
         }
@@ -506,12 +611,33 @@ void MainWindow::setupSignalsSlots()
     });
 
     // MainWindow <-> DBManager
+    connect(this, &MainWindow::requestFoldersList,
+            m_dbManager,&DBManager::onFoldersListRequested, Qt::BlockingQueuedConnection);
+    connect(this, &MainWindow::requestCreateUpdateFolder,
+            m_dbManager, &DBManager::onFolderCreateUpdateRequested, Qt::BlockingQueuedConnection);
+    connect(this, &MainWindow::requestDeleteFolder,
+            m_dbManager, &DBManager::onFolderDeleteRequested);
+    connect(this, &MainWindow::requestForceLastFolderIndexValue,
+            m_dbManager, &DBManager::onFolderForceLastRowIndexRequested, Qt::BlockingQueuedConnection);
+
+    connect(this, &MainWindow::requestTagsList,
+            m_dbManager,&DBManager::onTagsListRequested, Qt::BlockingQueuedConnection);
+    connect(this, &MainWindow::requestCreateUpdateTag,
+            m_dbManager, &DBManager::onTagCreateUpdateRequested, Qt::BlockingQueuedConnection);
+    connect(this, &MainWindow::requestDeleteTag,
+            m_dbManager, &DBManager::onTagDeleteRequested);
+    connect(this, &MainWindow::requestForceLastTagIndexValue,
+            m_dbManager, &DBManager::onTagForceLastRowIndexRequested, Qt::BlockingQueuedConnection);
+
     connect(this, &MainWindow::requestNotesList,
             m_dbManager,&DBManager::onNotesListRequested, Qt::BlockingQueuedConnection);
     connect(this, &MainWindow::requestCreateUpdateNote,
-            m_dbManager, &DBManager::onCreateUpdateRequested, Qt::BlockingQueuedConnection);
+            m_dbManager, &DBManager::onNoteCreateUpdateRequested, Qt::BlockingQueuedConnection);
     connect(this, &MainWindow::requestDeleteNote,
-            m_dbManager, &DBManager::onDeleteNoteRequested);
+            m_dbManager, &DBManager::onNoteDeleteRequested);
+    connect(this, &MainWindow::requestForceLastNoteIndexValue,
+            m_dbManager, &DBManager::onNotesForceLastRowIndexRequested, Qt::BlockingQueuedConnection);
+
     connect(this, &MainWindow::requestRestoreNotes,
             m_dbManager, &DBManager::onRestoreNotesRequested, Qt::BlockingQueuedConnection);
     connect(this, &MainWindow::requestImportNotes,
@@ -521,11 +647,15 @@ void MainWindow::setupSignalsSlots()
     connect(this, &MainWindow::requestMigrateNotes,
             m_dbManager, &DBManager::onMigrateNotesRequested, Qt::BlockingQueuedConnection);
     connect(this, &MainWindow::requestMigrateTrash,
-            m_dbManager, &DBManager::onMigrateTrashRequested, Qt::BlockingQueuedConnection);
-    connect(this, &MainWindow::requestForceLastRowIndexValue,
-            m_dbManager, &DBManager::onForceLastRowIndexValueRequested, Qt::BlockingQueuedConnection);
+            m_dbManager, &DBManager::onMigrateTrashRequested, Qt::BlockingQueuedConnection);    
+
+    connect(m_foldersModel, &FolderModel::folderAdded, m_foldersView, &FolderView::onFolderAdded, Qt::DirectConnection);
+    connect(m_foldersModel, &FolderModel::foldersAddList, m_foldersView, &FolderView::onFoldersAddList, Qt::DirectConnection);
+    connect(m_foldersModel, &FolderModel::folderRemoved, m_foldersView, &FolderView::onFolderRemoved, Qt::DirectConnection);
 
     connect(m_dbManager, &DBManager::notesReceived, this, &MainWindow::loadNotes);
+    connect(m_dbManager, &DBManager::foldersReceived, this, &MainWindow::loadFolders);
+    connect(m_dbManager, &DBManager::tagsReceived, this, &MainWindow::loadTags);
 }
 
 /*!
@@ -652,14 +782,29 @@ void MainWindow::initializeSettingsDatabase()
         m_settingsDatabase->setValue(QStringLiteral("windowGeometry"), saveGeometry());
     }
 
+    if(m_settingsDatabase->value(QStringLiteral("folderSplitterSizes"), "NULL") == "NULL"){
+        m_splitterMain->resize(width()-2*m_layoutMargin, height()-2*m_layoutMargin);
+        QList<int> sizes = m_splitterMain->sizes();
+        m_foldersListWidth = ui->folderFrame->minimumWidth() != 0 ? ui->folderFrame->minimumWidth() : m_foldersListWidth;
+
+        sizes[0] = m_foldersListWidth;
+        sizes[1] = m_splitterMain->width() - m_foldersListWidth;
+        m_splitterMain->setSizes(sizes);
+
+        m_settingsDatabase->setValue(QStringLiteral("folderSplitterSizes"), m_splitterMain->saveState());
+    }
+
     if(m_settingsDatabase->value(QStringLiteral("splitterSizes"), "NULL") == "NULL"){
-        m_splitter->resize(width()-2*m_layoutMargin, height()-2*m_layoutMargin);
+        m_splitter->resize(width()-2*m_layoutMargin - m_foldersListWidth, height()-2*m_layoutMargin);
         QList<int> sizes = m_splitter->sizes();
         m_noteListWidth = ui->frameLeft->minimumWidth() != 0 ? ui->frameLeft->minimumWidth() : m_noteListWidth;
+
         sizes[0] = m_noteListWidth;
         sizes[1] = m_splitter->width() - m_noteListWidth;
         m_splitter->setSizes(sizes);
+
         m_settingsDatabase->setValue(QStringLiteral("splitterSizes"), m_splitter->saveState());
+
     }
 }
 
@@ -708,13 +853,14 @@ void MainWindow::setupDatabases()
 void MainWindow::setupModelView()
 {
     m_noteView = static_cast<NoteView*>(ui->listView);
-    m_proxyModel->setSourceModel(m_noteModel);
-    m_proxyModel->setFilterKeyColumn(0);
-    m_proxyModel->setFilterRole(NoteModel::NoteContent);
-    m_proxyModel->setFilterCaseSensitivity(Qt::CaseInsensitive);
+
+    m_notesProxyModel->setSourceModel(m_noteModel);
+    m_notesProxyModel->setFilterKeyColumn(0);
+    m_notesProxyModel->setFilterRole(NoteModel::NoteContent);
+    m_notesProxyModel->setFilterCaseSensitivity(Qt::CaseInsensitive);
 
     m_noteView->setItemDelegate(new NoteWidgetDelegate(m_noteView));
-    m_noteView->setModel(m_proxyModel);
+    m_noteView->setModel(m_notesProxyModel);    
 }
 
 /*!
@@ -739,10 +885,19 @@ void MainWindow::restoreStates()
     if(m_settingsDatabase->value(QStringLiteral("dontShowUpdateWindow"), "NULL") != "NULL")
         m_dontShowUpdateWindow = m_settingsDatabase->value(QStringLiteral("dontShowUpdateWindow")).toBool();
 
+    m_splitterMain->setCollapsible(0, true);
+    m_splitterMain->resize(width() - m_layoutMargin, height() - m_layoutMargin);
+    if(m_settingsDatabase->value(QStringLiteral("folderSplitterSizes"), "NULL") != "NULL")
+        m_splitterMain->restoreState(m_settingsDatabase->value(QStringLiteral("folderSplitterSizes")).toByteArray());
+
+    m_foldersListWidth = m_splitterMain->sizes().at(0);
+    m_splitterMain->setCollapsible(0, false);
+
     m_splitter->setCollapsible(0, true);
-    m_splitter->resize(width() - m_layoutMargin, height() - m_layoutMargin);
+    m_splitter->resize(width() - m_layoutMargin - m_foldersListWidth, height() - m_layoutMargin);
     if(m_settingsDatabase->value(QStringLiteral("splitterSizes"), "NULL") != "NULL")
         m_splitter->restoreState(m_settingsDatabase->value(QStringLiteral("splitterSizes")).toByteArray());
+
     m_noteListWidth = m_splitter->sizes().at(0);
     m_splitter->setCollapsible(0, false);
 }
@@ -809,8 +964,28 @@ NoteData* MainWindow::generateNote(const int noteID)
     newNote->setCreationDateTime(noteDate);
     newNote->setLastModificationDateTime(noteDate);
     newNote->setFullTitle(QStringLiteral("New Note"));
-
     return newNote;
+}
+
+FolderData* MainWindow::generateFolder(const int folderID)
+{
+    FolderData* newFolder = new FolderData(this);
+    newFolder->setId(folderID);
+
+    QDateTime folderDate = QDateTime::currentDateTime();
+    newFolder->setCreationDateTime(folderDate);
+    newFolder->setLastModificationDateTime(folderDate);
+    newFolder->setFullTitle(QString("New Folder (%1)").arg(m_folderCounter));
+    return newFolder;
+}
+
+TagData* MainWindow::generateTag(const int tagID)
+{
+    TagData* newTag = new TagData(this);
+    newTag->setId(tagID);
+    newTag->setFullTitle(QStringLiteral("New Tag"));
+
+    return newTag;
 }
 
 /*!
@@ -844,6 +1019,22 @@ void MainWindow::showNoteInEditor(const QModelIndex &noteIndex)
     highlightSearch();
 }
 
+void MainWindow::loadFolders(QList<FolderData*> folderList, int folderCounter)
+{
+    qDebug() << "loadFolders - " << folderCounter << folderList;
+    if(!folderList.isEmpty()){
+        m_foldersModel->addList(folderList);
+        m_foldersModel->sort(0, Qt::AscendingOrder);
+    }
+
+    m_folderCounter = folderCounter;
+}
+
+void MainWindow::loadTags(QList<TagData*> tagList, int tagCounter)
+{
+    qDebug() << "loadTags - " << tagCounter;
+}
+
 /*!
  * \brief MainWindow::loadNotes
  * Load all the notes from database
@@ -855,9 +1046,10 @@ void MainWindow::showNoteInEditor(const QModelIndex &noteIndex)
  */
 void MainWindow::loadNotes(QList<NoteData *> noteList, int noteCounter)
 {
+    qDebug() << "loadNotes - " << noteCounter;
     if(!noteList.isEmpty()){
         m_noteModel->addListNote(noteList);
-        m_noteModel->sort(0,Qt::AscendingOrder);
+        m_noteModel->sort(0, Qt::AscendingOrder);
     }
 
     m_noteCounter = noteCounter;
@@ -875,7 +1067,7 @@ void MainWindow::loadNotes(QList<NoteData *> noteList, int noteCounter)
 void MainWindow::saveNoteToDB(const QModelIndex& noteIndex)
 {
     if(noteIndex.isValid() && m_isContentModified){
-        QModelIndex indexInSrc = m_proxyModel->mapToSource(noteIndex);
+        QModelIndex indexInSrc = m_notesProxyModel->mapToSource(noteIndex);
         NoteData* note = m_noteModel->getNote(indexInSrc);
         if(note != Q_NULLPTR)
             emit requestCreateUpdateNote(note);
@@ -891,7 +1083,7 @@ void MainWindow::saveNoteToDB(const QModelIndex& noteIndex)
 void MainWindow::removeNoteFromDB(const QModelIndex& noteIndex)
 {
     if(noteIndex.isValid()){
-        QModelIndex indexInSrc = m_proxyModel->mapToSource(noteIndex);
+        QModelIndex indexInSrc = m_notesProxyModel->mapToSource(noteIndex);
         NoteData* note = m_noteModel->getNote(indexInSrc);
         emit requestDeleteNote(note);
     }
@@ -903,8 +1095,8 @@ void MainWindow::removeNoteFromDB(const QModelIndex& noteIndex)
  */
 void MainWindow::selectFirstNote()
 {
-    if(m_proxyModel->rowCount() > 0){
-        QModelIndex index = m_proxyModel->index(0,0);
+    if(m_notesProxyModel->rowCount() > 0){
+        QModelIndex index = m_notesProxyModel->index(0,0);
         m_noteView->selectionModel()->select(index, QItemSelectionModel::ClearAndSelect);
         m_noteView->setCurrentIndex(index);
 
@@ -919,7 +1111,7 @@ void MainWindow::selectFirstNote()
  */
 void MainWindow::createNewNoteIfEmpty()
 {
-    if(m_proxyModel->rowCount() == 0)
+    if(m_notesProxyModel->rowCount() == 0)
         createNewNote();
 }
 
@@ -939,13 +1131,33 @@ void MainWindow::setButtonsAndFieldsEnabled(bool doEnable)
     m_dotsButton->setEnabled(doEnable);
 }
 
+void MainWindow::onNewFolderButtonPressed()
+{
+    // TODO: icon
+}
+
+void MainWindow::onNewTagButtonPressed()
+{
+    // TODO: icon
+}
+
+void MainWindow::onNewFolderButtonClicked()
+{
+    this->createNewFolder();
+}
+
+void MainWindow::onNewTagButtonClicked()
+{// TODO: icon
+    this->createNewTag();
+}
+
 /*!
  * \brief MainWindow::onNewNoteButtonPressed
  * When the new-note button is pressed, set it's icon accordingly
  */
 void MainWindow::onNewNoteButtonPressed()
 {
-    m_newNoteButton->setIcon(QIcon(QStringLiteral(":/images/newNote_Pressed.png")));
+//    m_newNoteButton->setIcon(QIcon(QStringLiteral(":/images/newNote_Pressed.png")));
 }
 
 /*!
@@ -954,7 +1166,7 @@ void MainWindow::onNewNoteButtonPressed()
  */
 void MainWindow::onNewNoteButtonClicked()
 {
-    m_newNoteButton->setIcon(QIcon(QStringLiteral(":/images/newNote_Regular.png")));
+    m_newNoteButton->setIcon(QIcon(QStringLiteral(":/images/plus-16.png")));
 
     if(!m_searchEdit->text().isEmpty()){
         clearSearch();
@@ -1116,7 +1328,7 @@ void MainWindow::onDotsButtonClicked()
 void MainWindow::onNotePressed(const QModelIndex& index)
 {
     if(sender() != Q_NULLPTR){
-        QModelIndex indexInProxy = m_proxyModel->index(index.row(), 0);
+        QModelIndex indexInProxy = m_notesProxyModel->index(index.row(), 0);
         selectNote(indexInProxy);
         m_noteView->setCurrentRowActive(false);
     }
@@ -1136,7 +1348,7 @@ void MainWindow::onTextEditTextChanged()
         if(m_textEdit->toPlainText() != content){
 
             // move note to the top of the list
-            QModelIndex sourceIndex = m_proxyModel->mapToSource(m_currentSelectedNoteProxy);
+            QModelIndex sourceIndex = m_notesProxyModel->mapToSource(m_currentSelectedNoteProxy);
             if(m_currentSelectedNoteProxy.row() != 0){
                 moveNoteToTop();
             }else if(!m_searchEdit->text().isEmpty() && sourceIndex.row() != 0){
@@ -1157,7 +1369,7 @@ void MainWindow::onTextEditTextChanged()
             dataValue[NoteModel::NoteFullTitle] = QVariant::fromValue(firstline);
             dataValue[NoteModel::NoteLastModificationDateTime] = QVariant::fromValue(dateTime);
 
-            QModelIndex index = m_proxyModel->mapToSource(m_currentSelectedNoteProxy);
+            QModelIndex index = m_notesProxyModel->mapToSource(m_currentSelectedNoteProxy);
             m_noteModel->setItemData(index, dataValue);
 
             m_isContentModified = true;
@@ -1210,7 +1422,7 @@ void MainWindow::onSearchEditTextChanged(const QString& keyword)
         }else if(!m_selectedNoteBeforeSearchingInSource.isValid()
                  && m_currentSelectedNoteProxy.isValid()){
 
-            m_selectedNoteBeforeSearchingInSource = m_proxyModel->mapToSource(m_currentSelectedNoteProxy);
+            m_selectedNoteBeforeSearchingInSource = m_notesProxyModel->mapToSource(m_currentSelectedNoteProxy);
         }
 
         if(m_currentSelectedNoteProxy.isValid()
@@ -1228,7 +1440,7 @@ void MainWindow::onSearchEditTextChanged(const QString& keyword)
             if(str.isEmpty()){
                 m_noteView->setFocusPolicy(Qt::StrongFocus);
                 clearSearch();
-                QModelIndex indexInProxy = m_proxyModel->mapFromSource(m_selectedNoteBeforeSearchingInSource);
+                QModelIndex indexInProxy = m_notesProxyModel->mapFromSource(m_selectedNoteBeforeSearchingInSource);
                 selectNote(indexInProxy);
                 m_selectedNoteBeforeSearchingInSource = QModelIndex();
             }else{
@@ -1256,10 +1468,10 @@ void MainWindow::onClearButtonClicked()
         clearSearch();
 
         if(m_noteModel->rowCount() > 0){
-            QModelIndex indexInProxy = m_proxyModel->mapFromSource(m_selectedNoteBeforeSearchingInSource);
+            QModelIndex indexInProxy = m_notesProxyModel->mapFromSource(m_selectedNoteBeforeSearchingInSource);
             int row = m_selectedNoteBeforeSearchingInSource.row();
             if(row == m_noteModel->rowCount())
-                indexInProxy = m_proxyModel->index(m_proxyModel->rowCount()-1,0);
+                indexInProxy = m_notesProxyModel->index(m_notesProxyModel->rowCount()-1,0);
 
             selectNote(indexInProxy);
         }else{
@@ -1269,6 +1481,31 @@ void MainWindow::onClearButtonClicked()
         m_selectedNoteBeforeSearchingInSource = QModelIndex();
     }
 }
+
+void MainWindow::createNewFolder()
+{
+    ++m_folderCounter;
+    FolderData* newFolder = generateFolder(m_folderCounter);
+    m_foldersModel->addFolder(newFolder);
+    emit requestCreateUpdateFolder(newFolder);
+
+}
+
+void MainWindow::deleteFolder(const QModelIndex& folderIndex)
+{
+    if(folderIndex.isValid()) {
+        FolderData* folder = m_foldersModel->removeFolder(folderIndex);
+        folder->setDeletionDateTime(QDateTime::currentDateTime());
+        emit requestDeleteFolder(folder);
+    }
+}
+
+void MainWindow::createNewTag()
+{}
+
+void MainWindow::deleteTag(const QModelIndex& tagIndex)
+{}
+
 
 /*!
  * \brief MainWindow::createNewNote
@@ -1303,7 +1540,7 @@ void MainWindow::createNewNote()
             m_editorDateLabel->setText(dateTimeForEditor);
 
             // update the current selected index
-            m_currentSelectedNoteProxy = m_proxyModel->mapFromSource(indexSrc);
+            m_currentSelectedNoteProxy = m_notesProxyModel->mapFromSource(indexSrc);
 
         }else{
             int row = m_currentSelectedNoteProxy.row();
@@ -1327,7 +1564,7 @@ void MainWindow::deleteNote(const QModelIndex &noteIndex, bool isFromUser)
 {
     if(noteIndex.isValid()){
         // delete from model
-        QModelIndex indexToBeRemoved = m_proxyModel->mapToSource(m_currentSelectedNoteProxy);
+        QModelIndex indexToBeRemoved = m_notesProxyModel->mapToSource(m_currentSelectedNoteProxy);
         NoteData* noteTobeRemoved = m_noteModel->removeNote(indexToBeRemoved);
 
         if(m_isTemp){
@@ -1360,6 +1597,12 @@ void MainWindow::deleteNote(const QModelIndex &noteIndex, bool isFromUser)
     m_noteView->setFocus();
 }
 
+void MainWindow::deleteSelectedFolder()
+{
+    QModelIndex idx = m_foldersView->selectedItemIndex();
+    deleteFolder(idx);
+}
+
 /*!
  * \brief MainWindow::deleteSelectedNote
  * Delete the selected note
@@ -1372,7 +1615,7 @@ void MainWindow::deleteSelectedNote()
 
             // update the index of the selected note before searching
             if(!m_searchEdit->text().isEmpty()){
-                QModelIndex currentIndexInSource = m_proxyModel->mapToSource(m_currentSelectedNoteProxy);
+                QModelIndex currentIndexInSource = m_notesProxyModel->mapToSource(m_currentSelectedNoteProxy);
                 int beforeSearchSelectedRow = m_selectedNoteBeforeSearchingInSource.row();
                 if(currentIndexInSource.row() < beforeSearchSelectedRow){
                     m_selectedNoteBeforeSearchingInSource = m_noteModel->index(beforeSearchSelectedRow-1);
@@ -1473,6 +1716,7 @@ void MainWindow::fullscreenWindow()
     if(isFullScreen()){
         if(!isMaximized()) {
             m_noteListWidth = m_splitter->sizes().at(0) != 0 ? m_splitter->sizes().at(0) : m_noteListWidth;
+            m_foldersListWidth = m_splitterMain->sizes().at(0) != 0 ? m_splitterMain->sizes().at(0) : m_foldersListWidth;
             QMargins margins(m_layoutMargin,m_layoutMargin,m_layoutMargin,m_layoutMargin);
 
             setMargins(margins);
@@ -1503,6 +1747,7 @@ void MainWindow::maximizeWindow()
     if(isMaximized()){
         if(!isFullScreen()){
             m_noteListWidth = m_splitter->sizes().at(0) != 0 ? m_splitter->sizes().at(0) : m_noteListWidth;
+            m_foldersListWidth = m_splitterMain->sizes().at(0) != 0 ? m_splitterMain->sizes().at(0) : m_foldersListWidth;
             QMargins margins(m_layoutMargin,m_layoutMargin,m_layoutMargin,m_layoutMargin);
 
             setMargins(margins);
@@ -1665,8 +1910,13 @@ void MainWindow::executeImport(const bool replace)
 
         setButtonsAndFieldsEnabled(true);
 
+        emit requestTagsList();
+
+        m_foldersModel->clearFolders();
+        emit requestFoldersList();
+
         m_noteModel->clearNotes();
-        emit requestNotesList();
+        emit requestNotesList();        
     }
 }
 
@@ -1857,6 +2107,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
 
     m_settingsDatabase->setValue(QStringLiteral("dontShowUpdateWindow"), m_dontShowUpdateWindow);
 
+    m_settingsDatabase->setValue(QStringLiteral("folderSplitterSizes"), m_splitterMain->saveState());
     m_settingsDatabase->setValue(QStringLiteral("splitterSizes"), m_splitter->saveState());
     m_settingsDatabase->sync();
 
@@ -1887,8 +2138,11 @@ void MainWindow::mousePressEvent(QMouseEvent* event)
             m_canStretchWindow = true;
 
             int currentWidth = m_splitter->sizes().at(0);
+            int fcurrentWidth = m_splitterMain->sizes().at(0);
             if(currentWidth != 0)
                 m_noteListWidth = currentWidth;
+            if(fcurrentWidth != 0)
+                m_foldersListWidth = fcurrentWidth;
 
             if((m_mousePressX < this->width() && m_mousePressX > this->width() - m_layoutMargin)
                     && (m_mousePressY < m_layoutMargin && m_mousePressY > 0)){
@@ -1929,6 +2183,8 @@ void MainWindow::mousePressEvent(QMouseEvent* event)
  */
 void MainWindow::mouseMoveEvent(QMouseEvent* event)
 {
+    qDebug() << "mm " << event;
+
     if(!m_canStretchWindow && !m_canMoveWindow){
         m_mousePressX = event->x();
         m_mousePressY = event->y();
@@ -1958,7 +2214,7 @@ void MainWindow::mouseMoveEvent(QMouseEvent* event)
         }
     }
 
-    if(!m_canMoveWindow){
+    if(!m_canMoveWindow){        
         switch (m_stretchSide) {
         case StretchSide::Right:
         case StretchSide::Left:
@@ -2161,12 +2417,12 @@ void MainWindow::moveNoteToTop()
         m_noteView->scrollToTop();
 
         // move the current selected note to the top
-        QModelIndex sourceIndex = m_proxyModel->mapToSource(m_currentSelectedNoteProxy);
+        QModelIndex sourceIndex = m_notesProxyModel->mapToSource(m_currentSelectedNoteProxy);
         QModelIndex destinationIndex = m_noteModel->index(0);
         m_noteModel->moveRow(sourceIndex, sourceIndex.row(), destinationIndex, 0);
 
         // update the current item
-        m_currentSelectedNoteProxy = m_proxyModel->mapFromSource(destinationIndex);
+        m_currentSelectedNoteProxy = m_notesProxyModel->mapFromSource(destinationIndex);
         m_noteView->setCurrentIndex(m_currentSelectedNoteProxy);
     }else{
         qDebug() << "MainWindow::moveNoteTop : m_currentSelectedNoteProxy not valid";
@@ -2190,7 +2446,7 @@ void MainWindow::clearSearch()
     m_editorDateLabel->clear();
     m_textEdit->blockSignals(false);
 
-    m_proxyModel->setFilterFixedString(QString());
+    m_notesProxyModel->setFilterFixedString(QString());
 
     m_clearButton->hide();
     m_searchEdit->setFocus();
@@ -2202,7 +2458,7 @@ void MainWindow::clearSearch()
  */
 void MainWindow::findNotesContain(const QString& keyword)
 {
-    m_proxyModel->setFilterFixedString(keyword);
+    m_notesProxyModel->setFilterFixedString(keyword);
     m_clearButton->show();
 
     m_textEdit->blockSignals(true);
@@ -2210,7 +2466,7 @@ void MainWindow::findNotesContain(const QString& keyword)
     m_editorDateLabel->clear();
     m_textEdit->blockSignals(false);
 
-    if(m_proxyModel->rowCount() > 0){
+    if(m_notesProxyModel->rowCount() > 0){
         selectFirstNote();
     }else{
         m_currentSelectedNoteProxy = QModelIndex();
@@ -2227,7 +2483,7 @@ void MainWindow::selectNote(const QModelIndex &noteIndex)
         // save the position of text edit scrollbar
         if(!m_isTemp && m_currentSelectedNoteProxy.isValid()){
             int pos = m_textEdit->verticalScrollBar()->value();
-            QModelIndex indexSrc = m_proxyModel->mapToSource(m_currentSelectedNoteProxy);
+            QModelIndex indexSrc = m_notesProxyModel->mapToSource(m_currentSelectedNoteProxy);
             m_noteModel->setData(indexSrc, QVariant::fromValue(pos), NoteModel::NoteScrollbarPos);
         }
 
@@ -2237,7 +2493,7 @@ void MainWindow::selectNote(const QModelIndex &noteIndex)
         if(m_isTemp && noteIndex.row() != 0){
             // delete the unmodified new note
             deleteNote(m_currentSelectedNoteProxy, false);
-            m_currentSelectedNoteProxy = m_proxyModel->index(noteIndex.row()-1, 0);
+            m_currentSelectedNoteProxy = m_notesProxyModel->index(noteIndex.row()-1, 0);
         }else if(!m_isTemp
                  && m_currentSelectedNoteProxy.isValid()
                  && noteIndex != m_currentSelectedNoteProxy
@@ -2273,7 +2529,7 @@ void MainWindow::checkMigration()
     if(QFile::exists(oldTrashDBPath))
         migrateTrash(oldTrashDBPath);
 
-    emit requestForceLastRowIndexValue(m_noteCounter);
+    emit requestForceLastNoteIndexValue(m_noteCounter);
 }
 
 /*!
@@ -2514,7 +2770,7 @@ void MainWindow::leaveEvent(QEvent *)
  * \return
  */
 bool MainWindow::eventFilter(QObject *object, QEvent *event)
-{
+{       
     switch (event->type()){
     case QEvent::Enter:{
         if(qApp->applicationState() == Qt::ApplicationActive){
@@ -2553,7 +2809,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
 
             if(object == m_newNoteButton){
                 this->setCursor(Qt::PointingHandCursor);
-                m_newNoteButton->setIcon(QIcon(QStringLiteral(":/images/newNote_Hovered.png")));
+                m_newNoteButton->setIcon(QIcon(QStringLiteral(":/images/plus-16.png")));
             }
 
             if(object == m_trashButton){
@@ -2565,9 +2821,21 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
                 this->setCursor(Qt::PointingHandCursor);
                 m_dotsButton->setIcon(QIcon(QStringLiteral(":/images/3dots_Hovered.png")));
             }
+
+            if(object == m_sidebarButton){
+                this->setCursor(Qt::PointingHandCursor);
+            }
+
+            if(object == m_newFolderButton){
+                this->setCursor(Qt::PointingHandCursor);
+            }
+
+            if(object == m_newTagsButton){
+                this->setCursor(Qt::PointingHandCursor);
+            }
         }
 
-        if(object == ui->frame){
+        if(object == ui->notesFrame){
             ui->centralWidget->setCursor(Qt::ArrowCursor);
         }
 
@@ -2598,7 +2866,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
 
             if(object == m_newNoteButton){
                 this->unsetCursor();
-                m_newNoteButton->setIcon(QIcon(QStringLiteral(":/images/newNote_Regular.png")));
+                m_newNoteButton->setIcon(QIcon(QStringLiteral(":/images/plus-16.png")));
             }
 
             if(object == m_trashButton){
@@ -2624,7 +2892,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
         m_yellowMinimizeButton->setIcon(QIcon(QStringLiteral(":images/unfocusedButton")));
         m_greenMaximizeButton->setIcon(QIcon(QStringLiteral(":images/unfocusedButton")));
 #endif
-        m_newNoteButton->setIcon(QIcon(QStringLiteral(":/images/newNote_Regular.png")));
+        m_newNoteButton->setIcon(QIcon(QStringLiteral(":/images/plus-16.png")));
         m_trashButton->setIcon(QIcon(QStringLiteral(":/images/trashCan_Regular.png")));
         m_dotsButton->setIcon(QIcon(QStringLiteral(":/images/3dots_Regular.png")));
         break;
@@ -2644,7 +2912,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
         m_yellowMinimizeButton->setIcon(QIcon(QStringLiteral(":images/yellow.png")));
         m_greenMaximizeButton->setIcon(QIcon(QStringLiteral(":images/green.png")));
 #endif
-        m_newNoteButton->setIcon(QIcon(QStringLiteral(":/images/newNote_Regular.png")));
+        m_newNoteButton->setIcon(QIcon(QStringLiteral(":/images/plus-16.png")));
         m_trashButton->setIcon(QIcon(QStringLiteral(":/images/trashCan_Regular.png")));
         m_dotsButton->setIcon(QIcon(QStringLiteral(":/images/3dots_Regular.png")));
         break;
@@ -2683,7 +2951,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
                         clearSearch();
                         createNewNote();
                     }
-                }else if(m_proxyModel->rowCount() == 0){
+                }else if(m_notesProxyModel->rowCount() == 0){
                     createNewNote();
                 }
             }
@@ -2750,7 +3018,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
     case QEvent::MouseButtonDblClick:
         // Only allow double click (maximise/minimise) or dragging (move)
         // from the top part of the window
-        if(object == ui->frame){
+        if(object == ui->notesFrame){
             QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
             if(mouseEvent->y() >= ui->searchEdit->y()){
                 return true;
@@ -2860,19 +3128,19 @@ void MainWindow::setUseNativeWindowFrame(bool useNativeWindowFrame)
 #endif
 
     // Adjust space above search field
-    const QSizePolicy policy = ui->verticalSpacer_upSearchEdit->sizePolicy();
-    const int width = ui->verticalSpacer_upSearchEdit->sizeHint().width();
-    ui->verticalSpacer_upSearchEdit->changeSize(width,
-                                                useNativeWindowFrame ? ui->verticalSpacer_upScrollArea->sizeHint().height() : 25,
-                                                policy.horizontalPolicy(),
-                                                policy.verticalPolicy());
+//    const QSizePolicy policy = ui->verticalSpacer_upSearchEdit->sizePolicy();
+//    const int width = ui->verticalSpacer_upSearchEdit->sizeHint().width();
+//    ui->verticalSpacer_upSearchEdit->changeSize(width,
+//                                                useNativeWindowFrame ? ui->verticalSpacer_upScrollArea->sizeHint().height() : 25,
+//                                                policy.horizontalPolicy(),
+//                                                policy.verticalPolicy());
     ui->verticalLayout_scrollArea->invalidate();
 
     // Adjust space above text editor
-    ui->verticalSpacer_upEditorDateLabel->changeSize(width,
-                                                     useNativeWindowFrame ? ui->verticalSpacer_upScrollArea->sizeHint().height() : 25,
-                                                     policy.horizontalPolicy(),
-                                                     policy.verticalPolicy());
+//    ui->verticalSpacer_upEditorDateLabel->changeSize(width,
+//                                                     useNativeWindowFrame ? ui->verticalSpacer_upScrollArea->sizeHint().height() : 25,
+//                                                     policy.horizontalPolicy(),
+//                                                     policy.verticalPolicy());
     ui->verticalLayout_textEdit->invalidate();
 
     setMainWindowVisibility(true);

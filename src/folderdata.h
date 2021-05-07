@@ -1,23 +1,22 @@
-#ifndef NOTEDATA_H
-#define NOTEDATA_H
+#ifndef FOLDERDATA_H
+#define FOLDERDATA_H
+
+#include "notedata.h"
 
 #include <QObject>
 #include <QDateTime>
 
-class NoteData : public QObject
+class FolderData : public QObject
 {
     Q_OBJECT
-
-    friend class tst_NoteData;
-
 public:
-    explicit NoteData(QObject *parent = Q_NULLPTR);
+    explicit FolderData(QObject *parent = nullptr);
 
     int id() const;
     void setId(const int& id);
 
-    int folderId() const;
-    void setFolderId(const int& folderId);
+    QList<NoteData*> notes() const;
+    void setNotes(const QList<NoteData*> &notes);
 
     QString fullTitle() const;
     void setFullTitle(const QString &fullTitle);
@@ -28,8 +27,8 @@ public:
     QDateTime creationDateTime() const;
     void setCreationDateTime(const QDateTime& creationDateTime);
 
-    QString content() const;
-    void setContent(const QString &content);
+    QDateTime deletionDateTime() const;
+    void setDeletionDateTime(const QDateTime& deletionDateTime);
 
     bool isModified() const;
     void setModified(bool isModified);
@@ -37,28 +36,18 @@ public:
     bool isSelected() const;
     void setSelected(bool isSelected);
 
-    int scrollBarPosition() const;
-    void setScrollBarPosition(int scrollBarPosition);
-
-    QDateTime deletionDateTime() const;
-    void setDeletionDateTime(const QDateTime& deletionDateTime);
-
-
 private:
     int m_id;
-    int m_folderId;
-    QList<QString> m_tags;
+    QList<NoteData*> m_notes;
     QString m_fullTitle;
     QDateTime m_lastModificationDateTime;
     QDateTime m_creationDateTime;
     QDateTime m_deletionDateTime;
-    QString m_content;
     bool m_isModified;
     bool m_isSelected;
-    int m_scrollBarPosition;
 };
 
-QDataStream &operator<<(QDataStream &stream, const NoteData* noteData);
-QDataStream &operator>>(QDataStream &stream, NoteData *&noteData);
+QDataStream &operator<<(QDataStream &stream, const FolderData* folderData);
+QDataStream &operator>>(QDataStream &stream, FolderData *&folderData);
 
-#endif // NOTEDATA_H
+#endif // FOLDERDATA_H
