@@ -16,6 +16,7 @@ public:
     QSize treeHeight(QTreeWidget* widget);
     QList<QTreeWidgetItem*> items();
     QModelIndex selectedItemIndex() const;
+    void selectByIndex(const QModelIndex& idx);
 
     void dropEvent(QDropEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
@@ -29,11 +30,13 @@ private:
 
 signals:
     void removeFolder(const QModelIndex& index);
+    void noteMoved(const int noteId, const int toFolderId);
 
 private slots:
     void init();
 
-public slots:
+public slots:    
+
     void prepareMenu(const QPoint & pos);
     void onItemDblClicked(QTreeWidgetItem* item, int column);
     void onUpdateTreeHeight();

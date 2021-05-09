@@ -421,7 +421,7 @@ QList<FolderData *> DBManager::getAllFolders()
     QList<FolderData *> folderList;
 
     QSqlQuery query;
-    query.prepare("SELECT id, creation_date, modification_date, deletion_date, full_title FROM folders");
+    query.prepare("SELECT id, creation_date, modification_date, deletion_date, full_title FROM folders ORDER BY modification_date");
     bool status = query.exec();
     if(status){
         while(query.next()){
@@ -516,6 +516,28 @@ bool DBManager::addFolder(FolderData* folder)
     return (query.numRowsAffected() == 1);
 };
 
+
+bool DBManager::removeNoteTrash(NoteData *note)
+{
+    if(note == Q_NULLPTR) return false;
+
+    int id = note->id();
+
+    QSqlQuery query;
+    QString queryStr = QStringLiteral("DELETE FROM deleted_notes WHERE id=%1").arg(id);
+
+    query.exec(queryStr);
+    return query.numRowsAffected() == 1;
+}
+
+bool DBManager::trashClean()
+{    
+    QSqlQuery query;
+    QString queryStr = QStringLiteral("DELETE FROM deleted_notes");
+    query.exec(queryStr);
+    return query.numRowsAffected() > -1;
+}
+
 /*!
  * \brief DBManager::removeNote
  * \param note
@@ -533,7 +555,8 @@ bool DBManager::removeNote(NoteData* note)
     bool removed = (query.numRowsAffected() == 1);
 
     qint64 epochTimeDateCreated = note->creationDateTime().toMSecsSinceEpoch();
-    qint64 epochTimeDateModified = note->lastModificationdateTime().toMSecsSinceEpoch();
+    // move upper in trash
+    qint64 epochTimeDateModified = QDateTime::currentMSecsSinceEpoch();
     qint64 epochTimeDateDeleted = note->deletionDateTime().toMSecsSinceEpoch();
     QString content = note->content()
                             .replace("'","''")
@@ -541,7 +564,7 @@ bool DBManager::removeNote(NoteData* note)
     QString fullTitle = note->fullTitle()
                               .replace("'","''")
                               .replace(QChar('\x0'), emptyStr);
-    int folderId = note->folderId();
+    int folderId = -1; // forget folder
 
     queryStr = QString("INSERT INTO deleted_notes "
                        "(id, folder_id, creation_date, modification_date, deletion_date, content, full_title) "
@@ -613,12 +636,12 @@ bool DBManager::updateNote(NoteData* note)
     QString fullTitle = note->fullTitle().replace(QChar('\x0'), emptyStr);
 
     query.prepare(QStringLiteral("UPDATE active_notes SET modification_date = :date, content = :content, "
-                                 "full_title = :title, folderId = :folder WHERE id = :id"));
+                                 "full_title = :title, folder_id = :folder WHERE id = :id"));
     query.bindValue(QStringLiteral(":date"), epochTimeDateModified);
     query.bindValue(QStringLiteral(":content"), content);
     query.bindValue(QStringLiteral(":title"), fullTitle);
-    query.bindValue(QStringLiteral(":id"), id);
     query.bindValue(QStringLiteral(":folder"), folderId);
+    query.bindValue(QStringLiteral(":id"), id);
 
     if (!query.exec()) {
         qWarning () << __func__ << ": " << query.lastError();
@@ -626,6 +649,28 @@ bool DBManager::updateNote(NoteData* note)
 
     return (query.numRowsAffected() == 1);
 }
+
+bool DBManager::updateFolder(FolderData* folder)
+{
+    QSqlQuery query;
+    QString emptyStr;
+
+    int id = folder->id();
+    QString fullTitle = folder->fullTitle().replace(QChar('\x0'), emptyStr);
+
+    query.prepare(QStringLiteral("UPDATE folders SET "
+                                 "full_title = :title "
+                                 "WHERE id = :id"));
+    query.bindValue(QStringLiteral(":title"), fullTitle);
+    query.bindValue(QStringLiteral(":id"), id);
+
+    if (!query.exec()) {
+        qWarning () << __func__ << ": " << query.lastError();
+    }
+
+    return (query.numRowsAffected() == 1);
+};
+
 
 /*!
  * \brief DBManager::migrateNote
@@ -709,14 +754,6 @@ bool DBManager::removeTag(TagData* tag, NoteData* note)
 {
 }
 
-bool DBManager::moveToFolder(FolderData* src, FolderData* trg, NoteData* note)
-{
-}
-
-// Folders
-bool DBManager::updateFolder(FolderData* folder)
-{};
-
 // SLOTS
 // Tags
 void DBManager::onTagsListRequested()
@@ -766,6 +803,8 @@ void DBManager::onFoldersListRequested()
 void DBManager::onFolderCreateUpdateRequested(FolderData* folder)
 {
     bool exists = isFolderExists(folder);
+
+    qDebug() << "onFolderCreateUpdateRequested: " << exists;
     if(exists) updateFolder(folder);
     else addFolder(folder);
 };
@@ -819,12 +858,23 @@ void DBManager::onNoteCreateUpdateRequested(NoteData* note)
     else addNote(note);
 }
 
+void DBManager::onNoteDeleteTrashRequested(NoteData *note)
+{
+    removeNoteTrash(note);
+}
+
+void DBManager::onNoteTrashCleanRequested()
+{
+    trashClean();    
+}
+
+
 /*!
  * \brief DBManager::onDeleteNoteRequested
  * \param note
  */
 void DBManager::onNoteDeleteRequested(NoteData* note)
-{
+{    
     removeNote(note);
 }
 

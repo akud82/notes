@@ -41,5 +41,10 @@
         <file>images/allnotes-16.png</file>
         <file>images/plus-16.png</file>
         <file>images/sidebar-16.png</file>
+        <file>images/pin-16.png</file>
+        <file>images/blue-trash-16.png</file>
+        <file>images/menu-16.png</file>
+        <file>images/services-16.png</file>
+        <file>images/edit-16.png</file>
     </qresource>
 </RCC>

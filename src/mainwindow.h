@@ -85,7 +85,7 @@ public:
     explicit MainWindow(QWidget *parent = Q_NULLPTR);
     ~MainWindow() Q_DECL_OVERRIDE;
 
-    void setMainWindowVisibility(bool state);
+    void setMainWindowVisibility(bool state);    
 
 protected:
     void paintEvent(QPaintEvent* event) Q_DECL_OVERRIDE;
@@ -118,6 +118,7 @@ private:
     QTextEdit* m_textEdit;
     QLineEdit* m_searchEdit;
     QLabel* m_editorDateLabel;
+    QLabel* m_folderLabel;
     QSplitter *m_splitter;
     QSplitter *m_splitterMain;
     QTreeWidget *m_tagsTree;
@@ -136,8 +137,7 @@ private:
     NoteModel* m_deletedNotesModel;
 
     QSortFilterProxyModel* m_notesProxyModel;
-    QSortFilterProxyModel* m_foldersProxyModel;
-    QSortFilterProxyModel* m_tagsProxyModel;
+    QSortFilterProxyModel* m_folderProxyModel;
 
     QModelIndex m_currentSelectedNoteProxy;
     QModelIndex m_selectedNoteBeforeSearchingInSource;
@@ -169,6 +169,9 @@ private:
     bool m_alwaysStayOnTop;
     bool m_useNativeWindowFrame;
 
+    void selectAllNotes();
+    void selectTrash();
+    void selectCurrentFolder();
     void setupTreeView();
     void setupMainWindow();
     void setupFonts();
@@ -198,6 +201,7 @@ private:
     QDateTime getQDateTime(QString date);
     void showNoteInEditor(const QModelIndex& noteIndex);
     void sortNotesList(QStringList &stringNotesList);
+    void saveFolderToDB(const QModelIndex& folderIndex);
     void saveNoteToDB(const QModelIndex& noteIndex);
     void removeNoteFromDB(const QModelIndex& noteIndex);
     void selectFirstNote();
@@ -220,7 +224,8 @@ private:
 private slots:
     void initData();
     void onFolderSelect();
-    void onRootSelect();
+    void onRootSelect();    
+    void onRootCustomMenuRequested(const QPoint& pos);
     void loadFolders(QList<FolderData*> folderList, int folderCounter);
     void loadTags(QList<TagData*> tagList, int tagCounter);
     void loadNotes(QList<NoteData*> noteList, int noteCounter);
@@ -244,7 +249,9 @@ private slots:
     void onGreenMaximizeButtonClicked();
     void onYellowMinimizeButtonClicked();
     void onRedCloseButtonClicked();
-    void createNewNote();    
+    void createNewNote();
+    void moveNote(int noteId, int folderId);
+    void renameFolder(QTreeWidgetItem* item, int column);
     void deleteNote(const QModelIndex& noteIndex, bool isFromUser=true);    
     void deleteSelectedNote();
     void deleteSelectedFolder();
@@ -261,7 +268,10 @@ private slots:
     void minimizeWindow();
     void QuitApplication();
     void checkForUpdates (const bool clicked);
-    void collapseNoteList();
+    void expandFolderList();
+    void collapseFolderList();
+    void toggleFolderList();
+    void collapseNoteList();    
     void expandNoteList();
     void toggleNoteList();
     void importNotesFile(const bool clicked);
@@ -279,8 +289,8 @@ signals:
     void requestOpenDBManager(QString path, bool doCreate);
 
     void requestFoldersList();
-    void requestCreateUpdateFolder(FolderData* note);
-    void requestDeleteFolder(FolderData* note);
+    void requestCreateUpdateFolder(FolderData* folder);
+    void requestDeleteFolder(FolderData* folder);
     void requestForceLastFolderIndexValue(int index);
 
     void requestTagsList();
@@ -291,6 +301,9 @@ signals:
     void requestNotesList(FolderModel::FolderType type, int folderId);
     void requestCreateUpdateNote(NoteData* note);
     void requestDeleteNote(NoteData* note);   
+    void requestDeleteNoteTrash(NoteData* note);
+    void requestCleanTrash();
+    void requestMoveNote(int noteId, int folderId);
     void requestForceLastNoteIndexValue(int index);
 
     void requestRestoreNotes(QList<NoteData *> noteList);

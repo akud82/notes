@@ -18,7 +18,8 @@ public:
         NoteLastModificationDateTime,
         NoteDeletionDateTime,
         NoteContent,
-        NoteScrollbarPos
+        NoteScrollbarPos,
+        NoteIsTemp
     };
 
     explicit NoteModel(QObject *parent = Q_NULLPTR);
@@ -27,8 +28,10 @@ public:
     QModelIndex addNote(NoteData* note);
     QModelIndex insertNote(NoteData* note, int row);
     NoteData* getNote(const QModelIndex& index);
+    QModelIndex indexById(int id);
     void addListNote(QList<NoteData*> noteList);
     NoteData* removeNote(const QModelIndex& noteIndex);
+
     bool moveRow(const QModelIndex& sourceParent,
                  int sourceRow,
                  const QModelIndex& destinationParent,

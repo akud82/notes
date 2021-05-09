@@ -3,7 +3,8 @@
 
 FolderModel::FolderModel(QObject *parent)
     : QAbstractItemModel(parent),
-      m_currentFolder(Q_NULLPTR)
+      m_currentFolder(Q_NULLPTR),
+      m_folderType(None)
 {
 }
 
@@ -35,16 +36,34 @@ void FolderModel::setCurrentFolder(const FolderType type, const QModelIndex& ind
     }
 }
 
+QModelIndex FolderModel::indexById(int id)
+{
+    auto it = std::find_if(m_folderList.constBegin(), m_folderList.constEnd(), [&id](const FolderData* f) { return f->id() == id; });
+    if(it != m_folderList.constEnd()) {
+        int row = m_folderList.indexOf(it.i->t());
+        return createIndex(row, 0);
+    } else {
+        return QModelIndex();
+    }
+}
+
+QModelIndex FolderModel::currentIndex()
+{
+    if(m_currentFolder != Q_NULLPTR) {
+        return indexById(m_currentFolder->id());
+    } else {
+        return QModelIndex();
+    }
+}
+
 // Folder specific functionality:
 QModelIndex FolderModel::addFolder(FolderData* folder)
 {
-    const int rowCnt = rowCount();
-
-    beginInsertRows(QModelIndex(), rowCnt, rowCnt);
-    m_folderList << folder;
+    beginInsertRows(QModelIndex(), 0, 0);
+    m_folderList.push_front(folder);
     endInsertRows();
 
-    QModelIndex index = createIndex(rowCnt, 0);
+    QModelIndex index = createIndex(0, 0);
     emit folderAdded(folder, index);
     return index;
 };
@@ -59,7 +78,7 @@ void FolderModel::clearFolders()
 
 FolderData* FolderModel::getFolder(const QModelIndex& index)
 {
-    if(index.isValid()){
+    if(index.isValid() && index.row() < m_folderList.length()){
         return m_folderList.at(index.row());
     }else{
         return Q_NULLPTR;
@@ -69,7 +88,7 @@ FolderData* FolderModel::getFolder(const QModelIndex& index)
 FolderData* FolderModel::removeFolder(const QModelIndex& index)
 {
     int row = index.row();
-    beginRemoveRows(QModelIndex(), row, row);
+    beginRemoveRows(QModelIndex(), row, row);    
     FolderData* folder = m_folderList.takeAt(row);
     endRemoveRows();
 
@@ -84,7 +103,9 @@ void FolderModel::addList(QList<FolderData*> folderList)
 
     beginInsertRows(QModelIndex(), start, end);
     m_folderList << folderList;
+    sort(1, Qt::SortOrder::AscendingOrder);
     endInsertRows();
+
     emit foldersAddList(m_folderList, m_folderList.length());
 }
 
@@ -95,6 +116,18 @@ QModelIndex FolderModel::index(int row, int column, const QModelIndex &parent) c
 
 QModelIndex FolderModel::parent(const QModelIndex &child) const {
     return QModelIndex();
+}
+
+void FolderModel::sort(int column, Qt::SortOrder order)
+{
+    Q_UNUSED(column)
+    Q_UNUSED(order)
+
+    std::stable_sort(m_folderList.begin(), m_folderList.end(), [](FolderData* lhs, FolderData* rhs){
+        return lhs->lastModificationdateTime() > rhs->lastModificationdateTime();
+    });
+
+    emit dataChanged(index(0, 0), index(rowCount()-1, 0));
 };
 
 

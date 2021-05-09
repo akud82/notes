@@ -30,8 +30,10 @@ public:
     FolderType currentFolderType();
     int currentFolderId();
     FolderData* currentFolder();
+    QModelIndex indexById(int id);
+    QModelIndex currentIndex();
 
-    void setCurrentFolder(const FolderType type, const QModelIndex& index);
+    void setCurrentFolder(const FolderType type, const QModelIndex& index = QModelIndex());
 
     // Folder specific functionality:
     QModelIndex addFolder(FolderData* folder);
@@ -44,6 +46,7 @@ public:
     // Basic functionality:
     QModelIndex index(int row, int column, const QModelIndex &parent = QModelIndex()) const override;
     QModelIndex parent(const QModelIndex &child) const override;
+    void sort(int column, Qt::SortOrder order) Q_DECL_OVERRIDE;
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;    
     int columnCount(const QModelIndex &parent = QModelIndex()) const override;

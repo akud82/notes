@@ -60,8 +60,6 @@ MainWindow::MainWindow(QWidget *parent) :
     m_noteModel(new NoteModel(this)),
     m_deletedNotesModel(new NoteModel(this)),
     m_notesProxyModel(new QSortFilterProxyModel(this)),
-    m_foldersProxyModel(new QSortFilterProxyModel(this)),
-    m_tagsProxyModel(new QSortFilterProxyModel(this)),
     m_dbManager(Q_NULLPTR),
     m_dbThread(Q_NULLPTR),
     m_noteCounter(0),
@@ -98,6 +96,7 @@ MainWindow::MainWindow(QWidget *parent) :
     setupModelView();
     restoreStates();
     setupSignalsSlots();
+
     autoCheckForUpdates();
 
     m_highlighter = new MarkdownHighlighter(m_textEdit->document());
@@ -110,12 +109,20 @@ void MainWindow::setupTreeView()
     m_tagsTree->expandAll();
     m_foldersView->expandAll();
     m_rootTree->expandAll();
+    m_rootTree->setContextMenuPolicy(Qt::ContextMenuPolicy::CustomContextMenu);
+}
 
-    connect(m_foldersView->selectionModel(), SIGNAL(selectionChanged(const QItemSelection&,const QItemSelection&)),
-            this, SLOT(folderSelectionChanged(const QItemSelection&, const QItemSelection&)));
-
-    connect(m_rootTree->selectionModel(), SIGNAL(selectionChanged(const QItemSelection&,const QItemSelection&)),
-            this, SLOT(rootSelectionChanged(const QItemSelection&, const QItemSelection&)));
+void MainWindow::onRootCustomMenuRequested(const QPoint& pos)
+{
+    if(m_rootTree->topLevelItem(1)->isSelected()) {
+        QMenu *menu=new QMenu(this);
+        menu->addAction(QIcon(":/images/trash-16.png"), QString("Empty Trash"), this, [this](){
+            emit requestCleanTrash();
+            emit requestNotesList(FolderModel::Trash, -1);
+        });
+        QPoint pt = QPoint(pos.x(), pos.y() + menu->sizeHint().height()*2);
+        menu->exec(mapToGlobal(pt));
+    }
 }
 
 void MainWindow::rootSelectionChanged(const QItemSelection &selected, const QItemSelection &deselected) {
@@ -169,8 +176,7 @@ void MainWindow::initData()
             pd->deleteLater();
             setButtonsAndFieldsEnabled(true);
             emit requestFoldersList();
-            emit requestTagsList();
-            emit requestNotesList(m_foldersModel->currentFolderType(), m_foldersModel->currentFolderId());
+            emit requestTagsList();                      
         });
 
         QFuture<void> migration = QtConcurrent::run(this, &MainWindow::checkMigration);
@@ -178,8 +184,7 @@ void MainWindow::initData()
 
     } else {
         emit requestFoldersList();
-        emit requestTagsList();
-        emit requestNotesList(m_foldersModel->currentFolderType(), m_foldersModel->currentFolderId());
+        emit requestTagsList();        
     }
 
     /// Check if it is running with an argument (ex. hide)
@@ -322,6 +327,7 @@ void MainWindow::setupMainWindow()
     m_trafficLightLayout.setGeometry(QRect(2,2,90,16));
 #endif
 
+    m_folderLabel = ui->currentFolderLbl;
     m_newNoteButton = ui->newNoteButton;
     m_newFolderButton = ui->addFolderBtn;
     m_newTagsButton = ui->addTagBtn;
@@ -345,17 +351,7 @@ void MainWindow::setupMainWindow()
     ui->verticalSpacer_upEditorDateLabel->changeSize(0, 27, QSizePolicy::Fixed, QSizePolicy::Fixed);
 #endif
     ui->notesFrame->installEventFilter(this);
-
-    // handle hover folder
-    QPushButton* fbtn = ui->addFolderBtn;
-    connect(ui->foldersHeaderFrame, &HoverFrame::hoverEnter, fbtn, [fbtn](){ fbtn->setVisible(true);  });
-    connect(ui->foldersHeaderFrame, &HoverFrame::hoverLeave, fbtn, [fbtn](){ fbtn->setVisible(false);  });
-
-    // handle hover tag
-    QPushButton* tbtn = ui->addTagBtn;
-    connect(ui->tagsHeaderFrame, &HoverFrame::hoverEnter, tbtn, [tbtn](){ tbtn->setVisible(true);  });
-    connect(ui->tagsHeaderFrame, &HoverFrame::hoverLeave, tbtn, [tbtn](){ tbtn->setVisible(false);  });
-
+    ui->folderFrame->installEventFilter(this);
     ui->centralWidget->setMouseTracking(true);
     this->setMouseTracking(true);
 
@@ -426,6 +422,7 @@ void MainWindow::setupKeyboardShortcuts()
     new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_Q), this, SLOT(QuitApplication()));
     new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_K), this, SLOT(toggleStayOnTop()));
     new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_J), this, SLOT(toggleNoteList()));
+    new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_S), this, SLOT(toggleFolderList()));
 
     QxtGlobalShortcut *shortcut = new QxtGlobalShortcut(this);
     shortcut->setShortcut(QKeySequence(QStringLiteral("META+N")));
@@ -553,13 +550,57 @@ void MainWindow::setupTitleBarButtons()
  */
 void MainWindow::setupSignalsSlots()
 {
+    connect(m_rootTree, &QTreeWidget::customContextMenuRequested, this, &MainWindow::onRootCustomMenuRequested);
+
+    connect(m_foldersView, &FolderView::noteMoved, this, &MainWindow::moveNote, Qt::QueuedConnection);
+    connect(m_foldersView, &FolderView::itemChanged, this, &MainWindow::renameFolder);
+
+    // handle hover folder
+    QPushButton* fbtn = ui->addFolderBtn;
+    connect(ui->foldersHeaderFrame, &HoverFrame::hoverEnter, fbtn, [fbtn](){ fbtn->setVisible(true);  });
+    connect(ui->foldersHeaderFrame, &HoverFrame::hoverLeave, fbtn, [fbtn](){ fbtn->setVisible(false);  });
+
+    // handle hover tag
+    QPushButton* tbtn = ui->addTagBtn;
+    // TODO: set true on hover?
+    connect(ui->tagsHeaderFrame, &HoverFrame::hoverEnter, tbtn, [tbtn](){ tbtn->setVisible(false);  });
+    connect(ui->tagsHeaderFrame, &HoverFrame::hoverLeave, tbtn, [tbtn](){ tbtn->setVisible(false);  });
+
+    connect(m_foldersView->selectionModel(), SIGNAL(selectionChanged(const QItemSelection&,const QItemSelection&)),
+            this, SLOT(folderSelectionChanged(const QItemSelection&, const QItemSelection&)));
+
+    connect(m_rootTree->selectionModel(), SIGNAL(selectionChanged(const QItemSelection&,const QItemSelection&)),
+            this, SLOT(rootSelectionChanged(const QItemSelection&, const QItemSelection&)));
+
     connect(&m_updater, &UpdaterWindow::dontShowUpdateWindowChanged, [=](bool state){m_dontShowUpdateWindow = state;});
 
     connect(m_foldersModel, &FolderModel::folderChanged, [this](){
-        emit requestNotesList(this->m_foldersModel->currentFolderType(), this->m_foldersModel->currentFolderId());
+        if(this->m_foldersModel->currentFolder() != Q_NULLPTR) {
+            m_folderLabel->setText(this->m_foldersModel->currentFolder()->fullTitle());
+        } else {
+            if(this->m_foldersModel->currentFolderType() == FolderModel::AllNotes) {
+                m_folderLabel->setText(QString("All Notes"));
+            } else if(this->m_foldersModel->currentFolderType() == FolderModel::Trash) {
+                m_folderLabel->setText(QString("Trash"));
+            }
+        }
+
+        if(!m_isOperationRunning) {
+            if(m_foldersModel->currentFolderType() == FolderModel::AllNotes) {
+                selectAllNotes();
+            } else if(m_foldersModel->currentFolderType() == FolderModel::Trash) {
+                selectTrash();
+            } else {
+                selectCurrentFolder();
+            }
+        }
+
+        emit requestNotesList(this->m_foldersModel->currentFolderType(), this->m_foldersModel->currentFolderId());        
     });
 
     connect(m_foldersView, &FolderView::removeFolder, this, &MainWindow::deleteFolder);
+
+    connect(m_sidebarButton, &QPushButton::clicked, this, &MainWindow::toggleFolderList);
 
     // green button
     connect(m_greenMaximizeButton, &QPushButton::pressed, this, &MainWindow::onGreenMaximizeButtonPressed);
@@ -650,9 +691,11 @@ void MainWindow::setupSignalsSlots()
     connect(this, &MainWindow::requestNotesList,
             m_dbManager,&DBManager::onNotesListRequested, Qt::BlockingQueuedConnection);
     connect(this, &MainWindow::requestCreateUpdateNote,
-            m_dbManager, &DBManager::onNoteCreateUpdateRequested, Qt::BlockingQueuedConnection);
+            m_dbManager, &DBManager::onNoteCreateUpdateRequested, Qt::BlockingQueuedConnection);    
     connect(this, &MainWindow::requestDeleteNote,
             m_dbManager, &DBManager::onNoteDeleteRequested);
+    connect(this, &MainWindow::requestDeleteNoteTrash,
+            m_dbManager, &DBManager::onNoteDeleteTrashRequested);
     connect(this, &MainWindow::requestForceLastNoteIndexValue,
             m_dbManager, &DBManager::onNotesForceLastRowIndexRequested, Qt::BlockingQueuedConnection);
 
@@ -666,6 +709,9 @@ void MainWindow::setupSignalsSlots()
             m_dbManager, &DBManager::onMigrateNotesRequested, Qt::BlockingQueuedConnection);
     connect(this, &MainWindow::requestMigrateTrash,
             m_dbManager, &DBManager::onMigrateTrashRequested, Qt::BlockingQueuedConnection);    
+
+    connect(this, &MainWindow::requestCleanTrash,
+            m_dbManager, &DBManager::onNoteTrashCleanRequested, Qt::BlockingQueuedConnection);
 
     connect(m_foldersModel, &FolderModel::folderAdded, m_foldersView, &FolderView::onFolderAdded, Qt::DirectConnection);
     connect(m_foldersModel, &FolderModel::foldersAddList, m_foldersView, &FolderView::onFoldersAddList, Qt::DirectConnection);
@@ -878,7 +924,7 @@ void MainWindow::setupModelView()
     m_notesProxyModel->setFilterCaseSensitivity(Qt::CaseInsensitive);
 
     m_noteView->setItemDelegate(new NoteWidgetDelegate(m_noteView));
-    m_noteView->setModel(m_notesProxyModel);    
+    m_noteView->setModel(m_notesProxyModel);
 }
 
 /*!
@@ -995,7 +1041,7 @@ FolderData* MainWindow::generateFolder(const int folderID)
     QDateTime folderDate = QDateTime::currentDateTime();
     newFolder->setCreationDateTime(folderDate);
     newFolder->setLastModificationDateTime(folderDate);
-    newFolder->setFullTitle(QString("New Folder (%1)").arg(m_folderCounter));
+    newFolder->setFullTitle(QString("New Folder"));
     return newFolder;
 }
 
@@ -1041,12 +1087,14 @@ void MainWindow::showNoteInEditor(const QModelIndex &noteIndex)
 void MainWindow::loadFolders(QList<FolderData*> folderList, int folderCounter)
 {
     qDebug() << "loadFolders - " << folderCounter << folderList;
+
     if(!folderList.isEmpty()){
         m_foldersModel->addList(folderList);
-        m_foldersModel->sort(0, Qt::AscendingOrder);
     }
 
-    m_folderCounter = folderCounter;
+    m_folderCounter = folderCounter;    
+
+    m_foldersModel->setCurrentFolder(FolderModel::AllNotes);
 }
 
 void MainWindow::loadTags(QList<TagData*> tagList, int tagCounter)
@@ -1065,6 +1113,10 @@ void MainWindow::loadTags(QList<TagData*> tagList, int tagCounter)
  */
 void MainWindow::loadNotes(QList<NoteData *> noteList, int noteCounter)
 {    
+    m_textEdit->blockSignals(true);
+    m_textEdit->clear();
+    m_textEdit->blockSignals(false);
+
     m_noteModel->clearNotes();
 
     if(!noteList.isEmpty()){
@@ -1074,10 +1126,19 @@ void MainWindow::loadNotes(QList<NoteData *> noteList, int noteCounter)
 
     m_noteCounter = noteCounter;
 
-    // TODO: move this from here    
     selectFirstNote();
     createNewNoteIfEmpty();
 }
+
+void MainWindow::saveFolderToDB(const QModelIndex &folderIndex)
+{
+    if(folderIndex.isValid()) {
+        FolderData* folder = m_foldersModel->getFolder(folderIndex);
+        if(folder != Q_NULLPTR)
+            emit requestCreateUpdateFolder(folder);
+    }
+}
+
 
 /*!
  * \brief MainWindow::saveNoteToDB
@@ -1105,7 +1166,12 @@ void MainWindow::removeNoteFromDB(const QModelIndex& noteIndex)
     if(noteIndex.isValid()){
         QModelIndex indexInSrc = m_notesProxyModel->mapToSource(noteIndex);
         NoteData* note = m_noteModel->getNote(indexInSrc);
-        emit requestDeleteNote(note);
+        if(m_foldersModel->currentFolderType() == FolderModel::Trash) {
+            emit requestDeleteNoteTrash(note);
+        } else {
+            emit requestDeleteNote(note);
+        }
+        createNewNoteIfEmpty();
     }
 }
 
@@ -1130,6 +1196,10 @@ void MainWindow::selectFirstNote()
  */
 void MainWindow::createNewNoteIfEmpty()
 {
+    if(m_foldersModel->currentFolderType() == FolderModel::Trash) {
+        return;
+    }
+
     if(m_notesProxyModel->rowCount() == 0) {
         createNewNote();
     }
@@ -1210,7 +1280,7 @@ void MainWindow::onNewNoteButtonClicked()
  */
 void MainWindow::onTrashButtonPressed()
 {
-    m_trashButton->setIcon(QIcon(QStringLiteral(":/images/trashCan_Pressed.png")));
+//    m_trashButton->setIcon(QIcon(QStringLiteral(":/images/blue-trash-16.png")));
 }
 
 /*!
@@ -1219,7 +1289,7 @@ void MainWindow::onTrashButtonPressed()
  */
 void MainWindow::onTrashButtonClicked()
 {
-    m_trashButton->setIcon(QIcon(QStringLiteral(":/images/trashCan_Regular.png")));
+//    m_trashButton->setIcon(QIcon(QStringLiteral(":/images/blue-trash-16.png")));
 
     m_trashButton->blockSignals(true);
     deleteSelectedNote();
@@ -1232,7 +1302,7 @@ void MainWindow::onTrashButtonClicked()
  */
 void MainWindow::onDotsButtonPressed()
 {
-    m_dotsButton->setIcon(QIcon(QStringLiteral(":/images/3dots_Pressed.png")));
+    m_dotsButton->setIcon(QIcon(QStringLiteral(":/images/services-16.png")));
 }
 
 /*!
@@ -1241,7 +1311,7 @@ void MainWindow::onDotsButtonPressed()
  */
 void MainWindow::onDotsButtonClicked()
 {
-    m_dotsButton->setIcon(QIcon(QStringLiteral(":/images/3dots_Regular.png")));
+    m_dotsButton->setIcon(QIcon(QStringLiteral(":/images/services-16.png")));
 
     QMenu mainMenu;
     QMenu* viewMenu = mainMenu.addMenu(tr("View"));
@@ -1259,11 +1329,17 @@ void MainWindow::onDotsButtonClicked()
     viewMenu->setFont(QFont(QStringLiteral("Roboto"), 10, QFont::Normal));
     importExportNotesMenu->setFont(QFont(QStringLiteral("Roboto"), 10, QFont::Normal));
 #endif
+    QAction* folderListAction = viewMenu->addAction(QString("Toggle folders list"));
+    folderListAction->setShortcut(Qt::CTRL + Qt::Key_S);
+#if QT_VERSION >= QT_VERSION_CHECK(5, 10, 0)
+    folderListAction->setShortcutVisibleInContextMenu(true);
+#endif
+    connect(folderListAction, &QAction::triggered, this, &MainWindow::toggleFolderList);
 
     // note list visiblity action
     bool isCollapsed = (m_splitter->sizes().at(0) == 0);
-    QString actionLabel = isCollapsed? tr("Show notes list")
-                                     : tr("Hide notes list");
+    QString actionLabel = isCollapsed ? tr("Show notes list")
+                                      : tr("Hide notes list");
 
     QAction* noteListVisbilityAction = viewMenu->addAction(actionLabel);
     noteListVisbilityAction->setShortcut(Qt::CTRL + Qt::Key_J);
@@ -1362,6 +1438,11 @@ void MainWindow::onNotePressed(const QModelIndex& index)
  */
 void MainWindow::onTextEditTextChanged()
 {
+    if(m_foldersModel->currentFolderType() == FolderModel::Trash) {
+        qDebug() << "MainWindow::onTextEditTextChanged() : trash";
+        return;
+    }
+
     if(m_currentSelectedNoteProxy.isValid()){
         m_textEdit->blockSignals(true);
         QString content = m_currentSelectedNoteProxy.data(NoteModel::NoteContent).toString();
@@ -1388,12 +1469,12 @@ void MainWindow::onTextEditTextChanged()
             dataValue[NoteModel::NoteContent] = QVariant::fromValue(m_textEdit->toPlainText());
             dataValue[NoteModel::NoteFullTitle] = QVariant::fromValue(firstline);
             dataValue[NoteModel::NoteLastModificationDateTime] = QVariant::fromValue(dateTime);
+            dataValue[NoteModel::NoteIsTemp] = QVariant::fromValue(false);
 
             QModelIndex index = m_notesProxyModel->mapToSource(m_currentSelectedNoteProxy);
             m_noteModel->setItemData(index, dataValue);
 
-            m_isContentModified = true;
-
+            m_isContentModified = true;            
             m_autoSaveTimer->start(500);
         }
 
@@ -1506,9 +1587,9 @@ void MainWindow::createNewFolder()
 {
     ++m_folderCounter;
     FolderData* newFolder = generateFolder(m_folderCounter);
-    m_foldersModel->addFolder(newFolder);
+    QModelIndex index = m_foldersModel->addFolder(newFolder);
+    m_foldersModel->setCurrentFolder(FolderModel::Folder, index);
     emit requestCreateUpdateFolder(newFolder);
-
 }
 
 void MainWindow::onRootSelect()
@@ -1525,17 +1606,23 @@ void MainWindow::onRootSelect()
     if(rootIndex.isValid()) {
         if(rootIndex.row() > 0) {
             type = FolderModel::Trash;
+            m_newNoteButton->setVisible(false);
+            m_textEdit->setEnabled(false);
         } else {
             type = FolderModel::AllNotes;
+            m_newNoteButton->setVisible(true);
+            m_textEdit->setEnabled(true);
         }
-
         m_foldersModel->setCurrentFolder(type, QModelIndex());
+    } else {
+        m_foldersModel->setCurrentFolder(FolderModel::None, QModelIndex());
     }
 }
 
 void MainWindow::onFolderSelect()
 {
     if(m_currentSelectedNoteProxy.isValid() && m_isContentModified){
+        saveFolderToDB(m_foldersView->currentIndex());
         saveNoteToDB(m_currentSelectedNoteProxy);
         m_isContentModified = false;
     }
@@ -1545,8 +1632,12 @@ void MainWindow::onFolderSelect()
     FolderModel::FolderType type = FolderModel::None;
     QModelIndex idx = m_foldersView->selectionModel()->currentIndex();
     if(idx.isValid()) {
-        type = FolderModel::Folder;
-        m_foldersModel->setCurrentFolder(type, idx);
+        type = FolderModel::Folder;        
+        m_newNoteButton->setVisible(true);
+        m_textEdit->setEnabled(true);
+        m_foldersModel->setCurrentFolder(type, idx);        
+    } else {
+        m_foldersModel->setCurrentFolder(FolderModel::AllNotes, QModelIndex());
     }
 }
 
@@ -1555,7 +1646,9 @@ void MainWindow::deleteFolder(const QModelIndex& folderIndex)
     if(folderIndex.isValid()) {
         FolderData* folder = m_foldersModel->removeFolder(folderIndex);
         folder->setDeletionDateTime(QDateTime::currentDateTime());
-        emit requestDeleteFolder(folder);
+        emit requestDeleteFolder(folder); // delete from db
+
+        m_foldersModel->setCurrentFolder(FolderModel::AllNotes);
     }
 }
 
@@ -1611,6 +1704,41 @@ void MainWindow::createNewNote()
     }
 }
 
+void MainWindow::moveNote(int noteId, int folderId)
+{
+    QModelIndex noteIndex = m_noteModel->indexById(noteId);
+    if(noteIndex.isValid()) {
+        NoteData* note = m_noteModel->getNote(noteIndex);
+        if(note->folderId() != folderId) {
+            if(m_foldersModel->currentFolderType() != FolderModel::AllNotes) {
+                note = m_noteModel->removeNote(noteIndex);
+            }
+
+            if(m_foldersModel->currentFolderType() == FolderModel::Trash) {
+                emit requestDeleteNoteTrash(note);
+            }
+
+            note->setFolderId(folderId);
+            emit requestCreateUpdateNote(note);
+
+            createNewNoteIfEmpty();
+        }
+    }
+}
+
+void MainWindow::renameFolder(QTreeWidgetItem *item, int column)
+{
+    // column 0 is a padding and never changing
+    if(column == 1) {
+        QModelIndex findex = m_foldersView->currentIndex();
+        FolderData* fdata = m_foldersModel->getFolder(findex);
+        fdata->setFullTitle(item->text(column));
+        emit requestCreateUpdateFolder(fdata);
+
+        m_folderLabel->setText(fdata->fullTitle());
+    }
+}
+
 /*!
  * \brief MainWindow::deleteNote
  * deletes the specified note
@@ -1631,7 +1759,11 @@ void MainWindow::deleteNote(const QModelIndex &noteIndex, bool isFromUser)
             --m_noteCounter;
         }else{
             noteTobeRemoved->setDeletionDateTime(QDateTime::currentDateTime());
-            emit requestDeleteNote(noteTobeRemoved);
+            if(m_foldersModel->currentFolderType() == FolderModel::Trash){
+                emit requestDeleteNoteTrash(noteTobeRemoved);
+            } else {
+                emit requestDeleteNote(noteTobeRemoved);
+            }
         }
 
         if(isFromUser){
@@ -1686,6 +1818,8 @@ void MainWindow::deleteSelectedNote()
         }
         m_isOperationRunning = false;
     }
+
+    createNewNoteIfEmpty();
 }
 
 /*!
@@ -2003,6 +2137,37 @@ void MainWindow::exportNotesFile(const bool clicked)
         }
         file.close();
         emit requestExportNotes(fileName);
+    }
+}
+
+void MainWindow::expandFolderList()
+{
+    int minWidth = ui->folderFrame->minimumWidth();
+    int leftWidth = m_foldersListWidth < minWidth ? minWidth : m_foldersListWidth;
+
+    QList<int> sizes = m_splitterMain->sizes();
+    sizes[0] = leftWidth;
+    sizes[1] = m_splitterMain->width() - leftWidth;
+    m_splitterMain->setSizes(sizes);
+}
+
+void MainWindow::collapseFolderList()
+{
+    m_splitterMain->setCollapsible(0, true);
+    QList<int> sizes = m_splitterMain->sizes();
+    m_foldersListWidth = sizes.at(0);
+    sizes[0] = 0;
+    m_splitterMain->setSizes(sizes);
+    m_splitterMain->setCollapsible(0, false);
+}
+
+void MainWindow::toggleFolderList()
+{
+    bool isCollapsed = (m_splitterMain->sizes().at(0) == 0);
+    if(isCollapsed) {
+        expandFolderList();
+    } else {
+        collapseFolderList();
     }
 }
 
@@ -2871,12 +3036,12 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
 
             if(object == m_trashButton){
                 this->setCursor(Qt::PointingHandCursor);
-                m_trashButton->setIcon(QIcon(QStringLiteral(":/images/trashCan_Hovered.png")));
+                m_trashButton->setIcon(QIcon(QStringLiteral(":/images/blue-trash-16.png")));
             }
 
             if(object == m_dotsButton){
                 this->setCursor(Qt::PointingHandCursor);
-                m_dotsButton->setIcon(QIcon(QStringLiteral(":/images/3dots_Hovered.png")));
+                m_dotsButton->setIcon(QIcon(QStringLiteral(":/images/services-16.png")));
             }
 
             if(object == m_sidebarButton){
@@ -2893,6 +3058,10 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
         }
 
         if(object == ui->notesFrame){
+            ui->centralWidget->setCursor(Qt::ArrowCursor);
+        }
+
+        if(object == ui->folderFrame){
             ui->centralWidget->setCursor(Qt::ArrowCursor);
         }
 
@@ -2928,12 +3097,12 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
 
             if(object == m_trashButton){
                 this->unsetCursor();
-                m_trashButton->setIcon(QIcon(QStringLiteral(":/images/trashCan_Regular.png")));
+                m_trashButton->setIcon(QIcon(QStringLiteral(":/images/blue-trash-16.png")));
             }
 
             if(object == m_dotsButton){
                 this->unsetCursor();
-                m_dotsButton->setIcon(QIcon(QStringLiteral(":/images/3dots_Regular.png")));
+                m_dotsButton->setIcon(QIcon(QStringLiteral(":/images/services-16.png")));
             }
         }
         break;
@@ -2950,8 +3119,8 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
         m_greenMaximizeButton->setIcon(QIcon(QStringLiteral(":images/unfocusedButton")));
 #endif
         m_newNoteButton->setIcon(QIcon(QStringLiteral(":/images/plus-16.png")));
-        m_trashButton->setIcon(QIcon(QStringLiteral(":/images/trashCan_Regular.png")));
-        m_dotsButton->setIcon(QIcon(QStringLiteral(":/images/3dots_Regular.png")));
+        m_trashButton->setIcon(QIcon(QStringLiteral(":/images/blue-trash-16.png")));
+        m_dotsButton->setIcon(QIcon(QStringLiteral(":/images/services-16.png")));
         break;
     }
     case QEvent::WindowActivate:{
@@ -2970,8 +3139,8 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
         m_greenMaximizeButton->setIcon(QIcon(QStringLiteral(":images/green.png")));
 #endif
         m_newNoteButton->setIcon(QIcon(QStringLiteral(":/images/plus-16.png")));
-        m_trashButton->setIcon(QIcon(QStringLiteral(":/images/trashCan_Regular.png")));
-        m_dotsButton->setIcon(QIcon(QStringLiteral(":/images/3dots_Regular.png")));
+        m_trashButton->setIcon(QIcon(QStringLiteral(":/images/blue-trash-16.png")));
+        m_dotsButton->setIcon(QIcon(QStringLiteral(":/images/services-16.png")));
         break;
     }
     case QEvent::HoverEnter:{
@@ -3099,6 +3268,29 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
     }
 
     return QObject::eventFilter(object, event);
+}
+
+void MainWindow::selectAllNotes()
+{ 
+    m_rootTree->setCurrentItem(
+        m_rootTree->topLevelItem(0), 0,
+        QItemSelectionModel::Select
+    );
+}
+
+void MainWindow::selectTrash()
+{    
+    m_rootTree->setCurrentItem(
+        m_rootTree->topLevelItem(1), 0,
+        QItemSelectionModel::Select
+    );
+}
+
+void MainWindow::selectCurrentFolder()
+{    
+    QModelIndex index = m_foldersModel->currentIndex();
+    QTreeWidgetItem* item = m_foldersView->topLevelItem(index.row());
+    m_foldersView->setCurrentItem(item);
 }
 
 /*!

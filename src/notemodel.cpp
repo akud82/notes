@@ -66,6 +66,17 @@ NoteData* NoteModel::getNote(const QModelIndex& index)
     }
 }
 
+QModelIndex NoteModel::indexById(int id)
+{
+    auto it = std::find_if(m_noteList.constBegin(), m_noteList.constEnd(), [&id](const NoteData* note) { return note->id() == id; });
+    if(it != m_noteList.constEnd()) {
+        int row = m_noteList.indexOf(it.i->t());
+        return createIndex(row, 0);
+    } else {
+        return QModelIndex();
+    }
+}
+
 void NoteModel::addListNote(QList<NoteData *> noteList)
 {
     int start = rowCount();
@@ -129,6 +140,8 @@ QVariant NoteModel::data(const QModelIndex &index, int role) const
         return note->content();
     }else if(role == NoteScrollbarPos){
         return note->scrollBarPosition();
+    } else if(role == NoteIsTemp){
+        return note->isTemp();
     }
 
     return QVariant();
@@ -156,6 +169,8 @@ bool NoteModel::setData(const QModelIndex &index, const QVariant &value, int rol
         note->setContent(value.toString());
     }else if(role == NoteScrollbarPos){
         note->setScrollBarPosition(value.toInt());
+    }else if(role == NoteIsTemp) {
+        note->setTemp(value.toBool());
     }else{
         return false;
     }

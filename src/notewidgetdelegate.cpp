@@ -166,6 +166,8 @@ void NoteWidgetDelegate::paintLabels(QPainter* painter, const QStyleOptionViewIt
     const int topOffsetY = 5;   // space on top of title
     const int spaceY = 1;       // space between title and date
 
+    bool isTemp{index.data(NoteModel::NoteIsTemp).toBool()};
+
     QString title{index.data(NoteModel::NoteFullTitle).toString()};
     QFont titleFont = (option.state & QStyle::State_Selected) == QStyle::State_Selected ? m_titleSelectedFont : m_titleFont;
     QFontMetrics fmTitle(titleFont);
@@ -178,6 +180,10 @@ void NoteWidgetDelegate::paintLabels(QPainter* painter, const QStyleOptionViewIt
     double rowPosX = option.rect.x();
     double rowPosY = option.rect.y();
     double rowWidth = option.rect.width();
+    double rowHeight = option.rect.height();
+
+    double pinRectPosX = rowPosX + rowWidth - 24;
+    double pinRectPosY = rowPosY + ((rowHeight-12)/2);
 
     double titleRectPosX = rowPosX + leftOffsetX;
     double titleRectPosY = rowPosY;
@@ -191,6 +197,13 @@ void NoteWidgetDelegate::paintLabels(QPainter* painter, const QStyleOptionViewIt
 
     double rowRate = m_timeLine->currentFrame()/(m_maxFrame * 1.0);
     double currRowHeight = m_rowHeight * rowRate;
+
+    auto drawTmp = [painter](double posX, double posY, double width = 12, double height = 12, QColor color = QColor(0,255,0)){
+        QRect rect(posX, posY, width, height);
+        QIcon bulletIcon = QIcon(QStringLiteral(":/images/pin-16.png"));
+        painter->setPen(color);
+        bulletIcon.paint(painter, rect);
+    };
 
     auto drawStr = [painter](double posX, double posY, double width, double height, QColor color, QFont font, QString str){
         QRectF rect(posX, posY, width, height);
@@ -230,6 +243,11 @@ void NoteWidgetDelegate::paintLabels(QPainter* painter, const QStyleOptionViewIt
 
     // draw title & date
     title = fmTitle.elidedText(title, Qt::ElideRight, int(titleRectWidth));
+
+    if(isTemp) {
+        drawTmp(pinRectPosX, pinRectPosY);
+    }
+
     drawStr(titleRectPosX, titleRectPosY, titleRectWidth, titleRectHeight, m_titleColor, titleFont, title);
     drawStr(dateRectPosX, dateRectPosY, dateRectWidth, dateRectHeight, m_dateColor, m_dateFont, date);
 }

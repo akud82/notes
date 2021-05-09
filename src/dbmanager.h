@@ -45,8 +45,6 @@ private:
     bool removeFolder(FolderData* folder);
     bool updateFolder(FolderData* folder);
 
-    bool moveToFolder(FolderData* src, FolderData* trg, NoteData* note);
-
     // Notes
     int  getLastNoteID(bool isTrash);
     bool forceLastNoteIndexValue(const int indexValue);
@@ -61,6 +59,8 @@ private:
 
     bool addNote(NoteData* note);
     bool removeNote(NoteData* note);
+    bool removeNoteTrash(NoteData* note);
+    bool trashClean();
     bool permanantlyRemoveAllNotes();
     bool updateNote(NoteData* note);
 
@@ -91,6 +91,8 @@ public slots:
     void onNotesListRequested(FolderModel::FolderType type, int folderId);
     void onNoteCreateUpdateRequested(NoteData* note);
     void onNoteDeleteRequested(NoteData* note);
+    void onNoteDeleteTrashRequested(NoteData* note);
+    void onNoteTrashCleanRequested();
     void onNotesForceLastRowIndexRequested(int index);
 
     // Import/Export/Migrate Notes

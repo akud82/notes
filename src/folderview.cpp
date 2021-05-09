@@ -58,9 +58,14 @@ QModelIndex FolderView::selectedItemIndex() const
     return QModelIndex();
 }
 
+void FolderView::selectByIndex(const QModelIndex &idx)
+{
+    selectionModel()->clearSelection();
+//    selectionModel()->select(idx, QItemSelectionModel::Select);
+}
+
 void FolderView::dropEvent(QDropEvent *event)
 {
-    qDebug() << "dropEventS" << event;
     m_dragOver = false;
 
     QByteArray encoded = event->mimeData()->data("application/x-note-model");
@@ -68,12 +73,10 @@ void FolderView::dropEvent(QDropEvent *event)
     QTreeWidgetItem* fitem = itemAt(event->pos());
     int folderId = fitem->data(0, FolderModel::FolderID).toInt();
 
-    qDebug() << "dropEvent-ToFolder" << folderId << event->mimeData();
-
     while (!stream.atEnd()) {
         NoteData* item = new NoteData();
         stream >> item;
-        qDebug() << "dropEvent-Note" << item->id();
+        emit noteMoved(item->id(), folderId);
     }
 
     QAbstractItemView::dropEvent(event);
@@ -100,19 +103,27 @@ void FolderView::dragLeaveEvent(QDragLeaveEvent *event)
 void FolderView::prepareMenu(const QPoint & pos)
 {
     QTreeWidgetItem *n = itemAt(pos);
+    if(n == Q_NULLPTR) return;
+
     QModelIndex index = indexAt(pos);
+    if(!index.isValid()) return;
 
     QVariant folderVar = n->data(0, FolderModel::FolderID);
 
-    QAction *newAct = new QAction(QIcon(":/images/trash-16.png"), tr("&Remove"), this);
-    newAct->setStatusTip(tr("remove folder"));
+    QAction *removeAct = new QAction(QIcon(":/images/trash-16.png"), tr("&Remove"), this);
+    QAction *renameAct = new QAction(QIcon(":/images/edit-16.png"), tr("&Rename"), this);
 
-    connect(newAct, &QAction::triggered, this, [this, &index]() { emit removeFolder(index); });
+    removeAct->setStatusTip(tr("Remove folder"));
+    renameAct->setStatusTip(tr("Rename folder"));
+
+    connect(removeAct, &QAction::triggered, this, [this, &index]() { emit removeFolder(index); });
+    connect(renameAct, &QAction::triggered, this, [this]() { onItemDblClicked(this->currentItem(), 1); });
 
     QMenu menu(this);
-    menu.addAction(newAct);
+    menu.addAction(renameAct);
+    menu.addSeparator();
+    menu.addAction(removeAct);
 
-    QPoint pt(pos);
     menu.exec(mapToGlobal(pos));
 }
 
@@ -126,8 +137,9 @@ QTreeWidgetItem* FolderView::createItem(const FolderData* folder)
 }
 
 void FolderView::onFolderAdded(const FolderData* folder, const QModelIndex& index)
-{    
-    insertTopLevelItem(index.row(), createItem(folder));
+{
+    QTreeWidgetItem* item = createItem(folder);
+    insertTopLevelItem(index.row(), item);
     onUpdateTreeHeight();
 }
 
